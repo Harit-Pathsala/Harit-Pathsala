@@ -1,0 +1,28 @@
+{
+  "name": "harit-pathsala",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Harit Pathsala — Nepal school carbon-footprint platform (calculator + Three.js explorer + Forest Arena) with a local Bana (Ollama) assistant.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview --port 8000",
+    "test": "node src/test.mjs"
+  },
+  "dependencies": {
+    "gsap": "^3.15.0",
+    "howler": "^2.2.4",
+    "localforage": "^1.10.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.160.0",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@types/howler": "^2.2.13",
+    "@vitejs/plugin-react": "^4.3.1",
+    "typescript": "^6.0.3",
+    "vite": "^5.4.0"
+  }
+}
