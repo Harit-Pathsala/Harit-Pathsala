@@ -23,4 +23,5 @@ export const LOCATIONS = [
   { id: 'dhangadhi', kind: 'mission', missionId: 'm6', ready: true, en: 'Dhangadhi', ne: 'धनगढी', note_en: 'Flood Watch', note_ne: 'बाढी सतर्कता', mapX: 65.2, mapY: 248.6 },
   { id: 'apihimal', kind: 'mission', missionId: 'm5', ready: true, en: 'Api Himal Base Camp', ne: 'आपी हिमाल', note_en: 'Base Camp Carry-Out', note_ne: 'आधार शिविर', mapX: 105.8, mapY: 63.2 },
   { id: 'panchkhal', kind: 'mission', missionId: 'm8', ready: true, en: 'Panchkhal', ne: 'पाञ्चखाल', note_en: 'Waste Sort', note_ne: 'फोहोर छुट्याउने', mapX: 683.0, mapY: 394.4 },
+  { id: 'bardiya', kind: 'mission', missionId: 'jungle', ready: true, en: 'Bardiya', ne: 'बर्दिया', note_en: 'Sal Forest Patrol', note_ne: 'सालवन गस्ती', mapX: 265.0, mapY: 294.0 },
 ];

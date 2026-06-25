@@ -44,7 +44,7 @@ function emojiTexture(emoji) {
   const t = new THREE.CanvasTexture(c); t.needsUpdate = true; return t;
 }
 
-export default function WasteSortMission() {
+export default function WasteSortMission({ onWin, onMap }) {
   const { lang } = useLang();
   const tt = (en, ne) => (lang === 'ne' ? ne : en);
   const [phase, setPhase] = useState('play');
@@ -116,7 +116,7 @@ export default function WasteSortMission() {
       const span = TARGET > 1 ? score / TARGET : 1; itemT = T_START - (T_START - T_MIN) * span;
       setHud({ score, mistakes, time: Math.max(0, t), frac: 1, item: current });
     };
-    const finish = (win) => { if (ended) return; ended = true; if (win) useGameStore.getState().addEcoPoints(score >= TARGET ? 30 : 18); setResult({ win, score }); setPhase('done'); };
+    const finish = (win) => { if (ended) return; ended = true; if (win) onWin && onWin(); if (win) useGameStore.getState().addEcoPoints(score >= TARGET ? 30 : 18); setResult({ win, score }); setPhase('done'); };
 
     const judge = (cat) => {
       if (!current || flying || ended) return;
@@ -229,7 +229,7 @@ export default function WasteSortMission() {
       )}
 
       {phase === 'done' && (
-        <div className="card center" style={{ maxWidth: 560, margin: '0 auto' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(10,18,12,.42)', backdropFilter: 'blur(7px)' }}><div className="card center" style={{ maxWidth: 470, margin: 0, maxHeight: '88vh', overflowY: 'auto' }}>
           {result?.win ? (
             <>
               <div style={{ color: 'var(--primary)', display: 'grid', placeItems: 'center' }}><Icon name="basket" size={42} /></div>
@@ -245,9 +245,16 @@ export default function WasteSortMission() {
             </>
           )}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 10 }}>
-            <button className="btn" onClick={restart}>{tt('Play again', 'फेरि खेल्नुहोस्')}</button>
+            {result?.win ? (
+            <button className="btn" onClick={onMap}>{tt('Continue', 'जारी राख्नुहोस्')}</button>
+          ) : (
+            <>
+              <button className="btn" onClick={restart}>{tt('Play again', 'फेरि खेल्नुहोस्')}</button>
+              <button className="btn" onClick={onMap} style={{ background: '#eef3ee', color: '#1c3326' }}>{tt('Back to map', 'नक्सामा फर्कनुहोस्')}</button>
+            </>
+          )}
           </div>
-        </div>
+        </div></div>
       )}
 
       <div className="muted center" style={{ fontWeight: 700, marginTop: 12 }}>

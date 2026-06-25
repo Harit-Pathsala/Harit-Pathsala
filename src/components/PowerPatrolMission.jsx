@@ -38,7 +38,7 @@ const LEAKS = [
   { kind: 'ac', x: 2, z: -12.2, y: 2.6 },
 ];
 
-export default function PowerPatrolMission() {
+export default function PowerPatrolMission({ onWin, onMap }) {
   const { lang } = useLang();
   const tt = (en, ne) => (lang === 'ne' ? ne : en);
   const mountRef = useRef(null);
@@ -70,7 +70,7 @@ export default function PowerPatrolMission() {
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    const skyDay = new THREE.Color(0x9ec9e8);
+    const skyDay = new THREE.Color(0x8fcabf);
     const skyDark = new THREE.Color(0x10131c);
     scene.background = makeSkyTexture(skyDay.getHex());
     scene.fog = new THREE.Fog(skyDay.clone(), 60, 200);
@@ -143,7 +143,7 @@ export default function PowerPatrolMission() {
 
     const endMission = (kind) => {
       if (ended) return; ended = true;
-      if (kind === 'win') { audio.play('restore'); addRestoration(3, Math.max(0, BUDGET - carbonV)); addEcoPoints(25); }
+      if (kind === 'win') { audio.play('restore'); addRestoration(3, Math.max(0, BUDGET - carbonV)); addEcoPoints(25); onWin && onWin(); }
       else { audio.play('thud'); scene.background = skyDark; if (scene.fog) scene.fog.color = skyDark; hemi.intensity = 0.15; sun.intensity = 0.3; amb.intensity = 0.1; leaks.forEach((lk) => { lk.obj.userData.setOn(false); lk.ind.visible = false; }); }
       setCarbon(+carbonV.toFixed(2));
       setResult({ kind, total: +carbonV.toFixed(2) });
@@ -333,7 +333,7 @@ export default function PowerPatrolMission() {
 
         {/* RESULT overlay */}
         {phase === 'result' && result && (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(12,22,16,.65)', padding: 16 }}>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(12,22,16,.55)', backdropFilter: 'blur(6px)', padding: 16 }}>
             <div className="event-popup fade-in" style={{ textAlign: 'center', maxWidth: 460 }}>
               <div style={{ fontFamily: 'Baloo 2', fontSize: '1.9rem', color: result.kind === 'win' ? 'var(--primary)' : 'var(--danger)' }}>{resTitle}</div>
               <div style={{ fontFamily: 'Baloo 2', fontSize: '2.2rem', color: result.kind === 'win' ? 'var(--primary)' : 'var(--danger)' }}>{result.total.toFixed(2)} kg</div>
@@ -341,7 +341,14 @@ export default function PowerPatrolMission() {
                 <BanaFace size={40} mood={result.kind === 'win' ? 'happy' : 'sad'} />
                 <div className="bana-bubble">{resBody}</div>
               </div>
-              <button className="btn" onClick={retry}><Icon name="refresh" size={18} /> {result.kind === 'win' ? tt('Play again', 'फेरि खेल्नुहोस्') : tt('Try again', 'फेरि प्रयास')}</button>
+              {result.kind === 'win' ? (
+                <button className="btn" onClick={onMap}>{tt('Continue', 'जारी राख्नुहोस्')}</button>
+              ) : (
+                <>
+                  <button className="btn" onClick={retry}><Icon name="refresh" size={18} /> {tt('Try again', 'फेरि प्रयास')}</button>
+                  <button className="btn" onClick={onMap} style={{ background: '#eef3ee', color: '#1c3326' }}>{tt('Back to map', 'नक्सामा फर्कनुहोस्')}</button>
+                </>
+              )}
             </div>
           </div>
         )}

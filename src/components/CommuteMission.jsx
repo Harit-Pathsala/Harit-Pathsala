@@ -18,9 +18,9 @@ import { useLang } from '../i18n.jsx';
 const MODES = [
   { key: 'walk', en: 'Walk', ne: 'हिँड्ने', icon: 'walk', factor: 0.000, spd: 6 },
   { key: 'bicycle', en: 'Cycle', ne: 'साइकल', icon: 'bicycle', factor: 0.000, spd: 7 },
-  { key: 'public_bus', en: 'School bus', ne: 'स्कुल बस', icon: 'bus', factor: 0.089, spd: 8 },
-  { key: 'motorbike', en: 'Motorbike', ne: 'मोटरसाइकल', icon: 'motorbike', factor: 0.068, spd: 9 },
-  { key: 'private_car', en: 'Private car', ne: 'निजी कार', icon: 'car', factor: 0.192, spd: 10 },
+  { key: 'public_bus', en: 'School bus', ne: 'स्कुल बस', icon: 'bus', factor: 0.016, spd: 8 },
+  { key: 'motorbike', en: 'Motorbike', ne: 'मोटरसाइकल', icon: 'motorbike', factor: 0.066, spd: 9 },
+  { key: 'private_car', en: 'Private car', ne: 'निजी कार', icon: 'car', factor: 0.19, spd: 10 },
 ];
 // shared gameplay constants (identical across every commute mission)
 const IDLE_RATE = 0.035;
@@ -78,7 +78,7 @@ export const MISSION_PARAMS = {
   },
 };
 
-export default function CommuteMission({ missionId = 'butwal' }) {
+export default function CommuteMission({ missionId = 'butwal', onWin, onMap }) {
   const P = MISSION_PARAMS[missionId] || MISSION_PARAMS.butwal;
   // shadow the per-mission values as locals so the loop/JSX read them unchanged
   const { zStart: Z_START, zEnd: Z_END, redTriggerZ: RED_TRIGGER_Z, stopLineZ: STOP_LINE_Z,
@@ -141,7 +141,7 @@ export default function CommuteMission({ missionId = 'butwal' }) {
     mount.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    const skyClear = new THREE.Color(0x9ec9e8);
+    const skyClear = new THREE.Color(0x8fcabf);
     const skySmog = new THREE.Color(0xcdb98a);
     const sky = skyClear.clone();
     scene.background = makeSkyTexture(sky.getHex());
@@ -277,7 +277,7 @@ export default function CommuteMission({ missionId = 'butwal' }) {
       if (ended) return; ended = true;
       if (kind === 'crash') { gsap.to(camera.position, { x: '+=0.7', duration: 0.05, yoyo: true, repeat: 6 }); audio.play('thud'); }
       else if (kind === 'smog') audio.play('thud');
-      else { audio.play('restore'); addRestoration(3, Math.max(0, BUDGET - carbonV)); addEcoPoints(25); }
+      else { audio.play('restore'); addRestoration(3, Math.max(0, BUDGET - carbonV)); addEcoPoints(25); onWin && onWin(); }
       setCarbon(+carbonV.toFixed(3));
       setResult({ kind, total: +carbonV.toFixed(2), reason });
       setPhase('result');
@@ -523,7 +523,7 @@ export default function CommuteMission({ missionId = 'butwal' }) {
 
         {/* RESULT overlay (win / crash / smog) */}
         {phase === 'result' && result && (
-          <div style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(12,22,16,.6)', padding: 16 }}>
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'rgba(12,22,16,.55)', backdropFilter: 'blur(6px)', padding: 16 }}>
             <div className="event-popup fade-in" style={{ textAlign: 'center', maxWidth: 460 }}>
               <div style={{ fontFamily: 'Baloo 2', fontSize: '2rem', color: result.kind === 'win' ? 'var(--primary)' : 'var(--danger)' }}>{failTitle}</div>
               {result.kind !== 'crash' && (
@@ -534,7 +534,14 @@ export default function CommuteMission({ missionId = 'butwal' }) {
                 <div className="bana-bubble">{failBody}</div>
               </div>
               <div className="row" style={{ justifyContent: 'center' }}>
-                <button className="btn" onClick={retry}><Icon name="refresh" size={18} /> {result.kind === 'win' ? tt('Play again', 'फेरि खेल्नुहोस्') : tt('Try again', 'फेरि प्रयास')}</button>
+                {result.kind === 'win' ? (
+                <button className="btn" onClick={onMap}>{tt('Continue', 'जारी राख्नुहोस्')}</button>
+              ) : (
+                <>
+                  <button className="btn" onClick={retry}><Icon name="refresh" size={18} /> {tt('Try again', 'फेरि प्रयास')}</button>
+                  <button className="btn" onClick={onMap} style={{ background: '#eef3ee', color: '#1c3326' }}>{tt('Back to map', 'नक्सामा फर्कनुहोस्')}</button>
+                </>
+              )}
               </div>
             </div>
           </div>

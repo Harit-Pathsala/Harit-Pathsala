@@ -9,7 +9,7 @@ import Icon from './Icons.jsx';
 import { useGameActiveRef } from '../game/gameGate.js';
 import { useLang } from '../i18n.jsx';
 
-const TIME = 65, TOTAL = 22, CAP = 5, REACH = 2.3, BX = 16, BZ = 11, SPEED = 7.5;
+const TIME = 95, TOTAL = 14, CAP = 7, REACH = 2.8, BX = 16, BZ = 11, SPEED = 8.5;
 const DUMP = { x: 14, z: 10 };
 
 function makeLitter(kind) {
@@ -19,7 +19,7 @@ function makeLitter(kind) {
   const g = new THREE.Group(); const p = box(0.4, 0.04, 0.3, 0xd23b3b, { metalness: 0.6, roughness: 0.3 }); p.rotation.z = 0.25; g.add(p); return g; // foil packet
 }
 
-export default function CarryOutMission() {
+export default function CarryOutMission({ onWin, onMap }) {
   const { lang } = useLang();
   const tt = (en, ne) => (lang === 'ne' ? ne : en);
   const [phase, setPhase] = useState('play');
@@ -87,7 +87,7 @@ export default function CarryOutMission() {
 
     let pc = 0, out = 0, t = TIME, acc = 0, vx = 0, vz = 0, walkT = 0;
     let last = performance.now();
-    const finish = (win) => { if (ended) return; ended = true; if (win) useGameStore.getState().addEcoPoints(25); setResult({ win }); setPhase('done'); };
+    const finish = (win) => { if (ended) return; ended = true; if (win) onWin && onWin(); if (win) useGameStore.getState().addEcoPoints(25); setResult({ win }); setPhase('done'); };
     const onResize = () => { const w = mount.clientWidth, h = mount.clientHeight; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); };
     const ro = new ResizeObserver(onResize); ro.observe(mount);
 
@@ -174,7 +174,7 @@ export default function CarryOutMission() {
         <div className="bana" style={{ marginTop: 6 }}>
           <BanaFace size={40} />
           <div className="bana-bubble">
-            {phase === 'play' ? tt('Pick up the trekkers\u2019 litter, but your pack only holds 5. When it\u2019s full, carry it to the green  station, empty it, and go again — before the weather closes in!', 'पदयात्रीको फोहोर उठाउनुहोस्, तर झोलामा ५ मात्र अट्छ। भरिएपछि हरियो  स्टेसनमा खाली गरी फेरि जानुहोस् — मौसम बिग्रनुअघि!') : (result?.win ? tt('Base camp is spotless again!', 'आधार शिविर फेरि सफा भयो!') : tt('The weather closed in before you finished.', 'सक्नुअघि मौसम बिग्रियो।'))}
+            {phase === 'play' ? tt(`Pick up the trekkers\u2019 litter — your pack holds ${CAP}. When it\u2019s full, carry it to the green station, empty it, and go again before the weather closes in!`, `पदयात्रीको फोहोर उठाउनुहोस् — झोलामा ${CAP} अट्छ। भरिएपछि हरियो स्टेसनमा खाली गरी फेरि जानुहोस्, मौसम बिग्रनुअघि!`) : (result?.win ? tt('Base camp is spotless again!', 'आधार शिविर फेरि सफा भयो!') : tt('The weather closed in before you finished.', 'सक्नुअघि मौसम बिग्रियो।'))}
           </div>
         </div>
       </div>
@@ -197,7 +197,7 @@ export default function CarryOutMission() {
       )}
 
       {phase === 'done' && (
-        <div className="card center" style={{ maxWidth: 560, margin: '0 auto' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(10,18,12,.42)', backdropFilter: 'blur(7px)' }}><div className="card center" style={{ maxWidth: 470, margin: 0, maxHeight: '88vh', overflowY: 'auto' }}>
           {result?.win ? (
             <>
               <div style={{ color: 'var(--primary)', display: 'grid', placeItems: 'center' }}><Icon name="mountain" size={42} /></div>
@@ -212,13 +212,20 @@ export default function CarryOutMission() {
             </>
           )}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 10 }}>
-            <button className="btn" onClick={restart}>{tt('Try again', 'फेरि')}</button>
+            {result?.win ? (
+            <button className="btn" onClick={onMap}>{tt('Continue', 'जारी राख्नुहोस्')}</button>
+          ) : (
+            <>
+              <button className="btn" onClick={restart}>{tt('Try again', 'फेरि')}</button>
+              <button className="btn" onClick={onMap} style={{ background: '#eef3ee', color: '#1c3326' }}>{tt('Back to map', 'नक्सामा फर्कनुहोस्')}</button>
+            </>
+          )}
           </div>
-        </div>
+        </div></div>
       )}
 
       <div className="muted center" style={{ fontWeight: 700, marginTop: 12 }}>
-        {tt('Move: arrows / WASD / d-pad · pack holds 5 · empty it at the recycle station · carry out all 22.', 'चाल: arrows / WASD / d-pad · झोलामा ५ · पुनःचक्रण मा खाली · सबै २२ बोक्नुहोस्।')}
+        {tt(`Move: arrows / WASD / d-pad · pack holds ${CAP} · empty it at the recycle station · carry out all ${TOTAL}.`, `चाल: arrows / WASD / d-pad · झोलामा ${CAP} · पुनःचक्रण मा खाली · सबै ${TOTAL} बोक्नुहोस्।`)}
       </div>
     </div>
   );

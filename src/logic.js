@@ -10,104 +10,86 @@
  *   DEFRA = UK DEFRA 2023 Emission Factor Database (vehicles)
  * ==========================================================================*/
 
-/* ─── Emission Factors ───────────────────────────────────────────────────*/
+/* ─── Emission Factors — from the ORGANIZER's Emission_factors.xlsx ───────────
+ * Every factor a student touches comes straight from that sheet so our numbers
+ * match the official workbook. A few helper values that the sheet does not list
+ * (rooftop-solar lifecycle, tree sequestration, school-tool firewood) are marked
+ * "not in sheet" and kept only for the optional school tool / offsets. */
 export const EF = {
-  // ELECTRICITY
-  nepal_grid_kwh:   0.12,   // kg CO2e/kWh — Nepal grid = 82.5% hydro + 17.5% India import; hydro lifecycle ~0.024 + India 0.716 -> blended ~0.12 (IEA 2023; CEA 2024; Nepal LCA 2025)
-  solar_kwh:        0.04,   // kg CO2e/kWh — lifecycle
+  // ELECTRICITY (sheet: "Grid electricity used" = 0.23 kg CO₂/kWh, Nepal avg)
+  grid_kwh:          0.23,
+  solar_kwh:         0.04,    // not in sheet — rooftop-solar lifecycle, used only if a home has solar
 
-  // TRANSPORT (per km, per person, one-way)
-  walk:             0.000,
-  bicycle:          0.000,
-  public_bus:       0.089,  // GHG Protocol South Asia shared bus
-  microbus:         0.113,  // Nepal microbus estimate
-  motorbike:        0.068,  // shared motorbike passenger (DEFRA)
-  private_car:      0.192,  // DEFRA 2023 avg petrol car
+  // TRANSPORT — kg CO₂ per km (sheet commute rows)
+  walk:              0.000,
+  bicycle:           0.000,
+  bus:               0.016,   // sheet "Bus commute"      (4 km/l, 40 passengers)
+  motorbike:         0.066,   // sheet "Motorbike commute"(35 km/l)
+  car:               0.19,    // sheet "Car commute"      (12 km/l)
 
-  // COOKING FUELS
-  lpg_per_kg:       2.983,  // IPCC 2006 Table 2.2
-  firewood_per_kg:  1.747,  // IPCC incomplete combustion (open fire ~25% eff.)
-  induction_per_kwh:0.12,   // uses Nepal (hydro-dominant) grid — genuinely clean
+  // COOKING — LPG (sheet "LPG use" = 1.51 kg CO₂/kg LPG). Nepal cylinder = 14.2 kg.
+  lpg_per_kg:        1.51,
+  lpg_cylinder_kg:   14.2,
+  lpg_per_cylinder:  21.442,  // 14.2 × 1.51
 
-  // FOOD (per meal, per person)
-  dal_bhat_local:   0.35,
-  packaged_food:    1.20,
-  meat_heavy:       2.50,
-  vegetarian_canteen:0.50,
+  // WASTE — general waste to landfill (sheet "Solid waste" = 0.827 kg CO₂e/kg)
+  waste_per_kg:      0.827,
 
-  // WASTE (per kg waste)
-  compost:          0.06,
-  municipal_bin:    0.50,
-  open_burning:     2.10,
-  open_dump:        0.70,
+  // STATIONERY / SUPPLIES (sheet "Stationary supplies" = 1.7285 kg CO₂e / 1000 NPR)
+  stationery_per_npr: 0.0017284768211920529,
 
-  // WATER
-  water_per_litre:  0.0003,
+  // FUELS (sheet) — used by the whole-school tool
+  diesel_per_litre:  2.65,
+  petrol_per_litre:  2.31,
 
-  // SCHOOL ELECTRICITY PROFILES (kWh/day, whole school)
-  school_minimal_kwh:  8,
-  school_moderate_kwh: 20,
-  school_heavy_kwh:    45,
+  // SCHOOL-TOOL ONLY (firewood not in sheet — documented IPCC value, school canteens)
+  firewood_per_kg:   1.747,   // not in sheet — IPCC 2006 open-fire, kept for the school canteen tool
+  compost:           0.06,    // not in sheet — low-carbon disposal, school tool only
+  open_burning:      2.10,    // not in sheet — IPCC open burning, school tool only
 
-  // CARBON SEQUESTRATION
-  tree_per_year_kg: 21.0,
-  tree_per_day_kg:  0.0575, // 21 / 365
+  // CARBON SEQUESTRATION (not in sheet — standard, used for the tree offset)
+  tree_per_year_kg:  21.0,
+  tree_per_day_kg:   0.0575,  // 21 / 365
 };
 
-/* ─── Calculation engine ─────────────────────────────────────────────────*/
-// All internal values in kg CO2e per DAY.
-export function calculateFootprint(answers) {
-  const r = {}; // breakdown by category
+/* ─── Calculation engine ─────────────────────────────────────────────────────
+ * Personal student footprint, kg CO₂e per DAY. Categories and factors all come
+ * from the organizer's Emission_factors.xlsx (see EF above). Questions answered:
+ *   transportMode, distanceKm        — commute
+ *   electricityUnits (kWh/month), hasSolar
+ *   lpgCylinders (cylinders/month)   — cooking
+ *   wasteKgDay                       — waste thrown per day
+ *   stationeryNpr (NPR/month)        — notebooks, pens, paper */
+export function calculateFootprint(answers = {}) {
+  const num = (v, d = 0) => (Number.isFinite(+v) ? +v : d);
+  const r = {};
 
-  // 1. TRANSPORT — round trip (×2)
-  const factor = EF[answers.transportMode] ?? EF.public_bus;
-  r.transport = factor * answers.distanceKm * 2;
+  // 1. TRANSPORT — to school and back (round trip ×2), kg/km from the sheet
+  const tFactor = EF[answers.transportMode] ?? EF.bus;
+  r.transport = tFactor * num(answers.distanceKm) * 2;
 
-  // 2. HOME ELECTRICITY — 300 W avg household draw per active hour
-  const homeKwh = 0.3 * answers.electricityHours;
-  r.electricity_home = homeKwh * (answers.hasSolar ? EF.solar_kwh : EF.nepal_grid_kwh);
+  // 2. HOME ELECTRICITY — monthly units (kWh) ÷ 30 → per day × grid factor
+  const perKwh = answers.hasSolar ? EF.solar_kwh : EF.grid_kwh;
+  r.electricity = (num(answers.electricityUnits) / 30) * perKwh;
 
-  // 3. COOKING — amortised to per-day student share (÷5 household members)
-  if (answers.cookingFuel ==='lpg') {
-    r.cooking = (answers.lpgKgMonth / 30 / 5) * EF.lpg_per_kg;
-  } else if (answers.cookingFuel ==='firewood') {
-    r.cooking = (answers.firewoodKgDay / 5) * EF.firewood_per_kg;
-  } else if (answers.cookingFuel ==='electric') {
-    r.cooking = (1.5 * 3 / 5) * EF.nepal_grid_kwh; // 3 sessions × 1.5 kWh
-  } else { // mixed: 60% LPG + 40% firewood
-    r.cooking = (answers.lpgKgMonth * 0.6 / 30 / 5) * EF.lpg_per_kg
-              + (answers.firewoodKgDay * 0.4 / 5) * EF.firewood_per_kg;
-  }
+  // 3. COOKING — LPG cylinders/month; 1 cylinder = 14.2 kg × 1.51 kg CO₂/kg
+  r.cooking = (num(answers.lpgCylinders) * EF.lpg_per_cylinder) / 30;
 
-  // 4. FOOD — 2 meals attributed to the student
-  r.food = (EF[answers.foodType] ?? EF.dal_bhat_local) * 2;
+  // 4. WASTE — kg thrown per day × 0.827 kg CO₂e/kg (sheet solid-waste)
+  r.waste = num(answers.wasteKgDay) * EF.waste_per_kg;
 
-  // 5. WASTE — 0.5 kg/person/day
-  r.waste = 0.5 * (EF[answers.wasteDisposal] ?? EF.municipal_bin);
+  // 5. STATIONERY — monthly NPR ÷ 30 → per day × sheet factor
+  r.stationery = (num(answers.stationeryNpr) / 30) * EF.stationery_per_npr;
 
-  // 6. WATER — student share = total / 5
-  r.water = (answers.waterLitresDay / 5) * EF.water_per_litre;
+  const net = r.transport + r.electricity + r.cooking + r.waste + r.stationery;
 
-  // 7. SCHOOL ELECTRICITY — shared across 40 students/class
-  const schoolKwh = EF[`school_${answers.schoolElectricity}_kwh`] ?? EF.school_moderate_kwh;
-  r.electricity_school = (schoolKwh * EF.nepal_grid_kwh) / 40;
-
-  // 8. CARBON SINK — negative
-  r.carbon_sink = -(answers.treesCount * EF.tree_per_day_kg);
-
-  const gross = Object.entries(r)
-    .filter(([k, v]) => k !=='carbon_sink'&& v > 0)
-    .reduce((sum, [, v]) => sum + v, 0);
-  const net = gross + r.carbon_sink;
-
-  // ECO SCORE 0–100 (100 at net ≤1.0 kg, 0 at net ≥8.0 kg)
-  const score = Math.max(0, Math.min(100,
-    Math.round(100 - ((net - 1.0) / 7.0) * 100)
-  ));
+  // ECO SCORE 0–100 (greener = higher). Calibrated to the new per-student scale:
+  // 100 at ≤0.5 kg/day, 0 at ≥3.0 kg/day.
+  const score = Math.max(0, Math.min(100, Math.round(100 - ((net - 0.5) / 2.5) * 100)));
 
   return {
     breakdown: r,
-    grossTotal: +gross.toFixed(3),
+    grossTotal: +net.toFixed(3),
     netTotal:   +net.toFixed(3),
     ecoScore:   score,
     daily:   +net.toFixed(2),
@@ -116,15 +98,76 @@ export function calculateFootprint(answers) {
   };
 }
 
+/* ─── Whole-school footprint (annual) ────────────────────────────────────
+ * Estimates a SCHOOL's operational emissions from daily activity, so students
+ * can see how their own school emits — not just one person. Reuses the same
+ * emission factors above. Returns kg CO2e per YEAR by category. */
+export const SCHOOL_DAYS = 220; // typical operating days per year in Nepal
+
+export function calculateSchoolFootprint(inp = {}) {
+  const num = (v, d = 0) => (Number.isFinite(+v) ? +v : d);
+  const students = Math.max(0, num(inp.students, 0));
+  const staff = Math.max(0, num(inp.staff, 0));
+  const people = students + staff;
+  const dist = Math.max(0, num(inp.distanceKm, 0));
+
+  // commute — three groups, representative factors from the sheet (per km)
+  let a = Math.max(0, num(inp.shareActive, 0)), p = Math.max(0, num(inp.sharePublic, 0)), v = Math.max(0, num(inp.sharePrivate, 0));
+  const tot = a + p + v || 1; a /= tot; p /= tot; v /= tot;
+  const F_ACTIVE = 0, F_PUBLIC = EF.bus, F_PRIVATE = (EF.motorbike + EF.car) / 2;   // walk / bus / motorbike+car avg
+  const commutePerKm = a * F_ACTIVE + p * F_PUBLIC + v * F_PRIVATE;
+  const commute = people * dist * 2 * commutePerKm * SCHOOL_DAYS;
+
+  // electricity
+  const gridF = inp.solar ? EF.solar_kwh : EF.grid_kwh;
+  const SCHOOL_KWH = { minimal: 8, moderate: 20, heavy: 45 };
+  const kwhDay = inp.elecProfile === 'custom'
+    ? Math.max(0, num(inp.elecCustomKwh, 0))
+    : (SCHOOL_KWH[inp.elecProfile || 'moderate'] ?? SCHOOL_KWH.moderate);
+  const electricity = kwhDay * gridF * SCHOOL_DAYS;
+
+  // canteen cooking
+  let cooking = 0;
+  if (inp.cooks) {
+    const amt = Math.max(0, num(inp.cookAmtPerDay, 0));
+    if (inp.cookFuel === 'firewood') cooking = amt * EF.firewood_per_kg * SCHOOL_DAYS;
+    else if (inp.cookFuel === 'lpg') cooking = amt * EF.lpg_per_kg * SCHOOL_DAYS;
+    else if (inp.cookFuel === 'electric') cooking = amt * EF.grid_kwh * SCHOOL_DAYS;
+  }
+
+  // waste
+  const wasteF = { compost: EF.compost, bin: EF.waste_per_kg, burn: EF.open_burning }[inp.wasteMethod || 'bin'] ?? EF.waste_per_kg;
+  const waste = Math.max(0, num(inp.wasteKgDay, 0)) * wasteF * SCHOOL_DAYS;
+
+  const breakdown = { commute, electricity, cooking, waste };
+  const gross = commute + electricity + cooking + waste;
+  const offset = Math.max(0, num(inp.treesOnGround, 0)) * EF.tree_per_year_kg;
+  const net = gross - offset;
+
+  const biggest = Object.entries(breakdown).sort((x, y) => y[1] - x[1])[0] || ['commute', 0];
+  return {
+    breakdown,
+    gross: +gross.toFixed(0),
+    offset: +offset.toFixed(0),
+    net: +net.toFixed(0),
+    tonnesGross: +(gross / 1000).toFixed(2),
+    tonnesNet: +(net / 1000).toFixed(2),
+    perStudentYear: students > 0 ? +(net / students).toFixed(1) : 0,
+    dailyNet: +(net / SCHOOL_DAYS).toFixed(1),
+    treesToOffset: Math.max(0, Math.ceil(gross / EF.tree_per_year_kg)),
+    treesStillNeeded: Math.max(0, Math.ceil(net / EF.tree_per_year_kg)),
+    biggestKey: biggest[0],
+    people,
+  };
+}
+
 /* ─── Category metadata (labels, colours, icons) ─────────────────────────*/
 export const CATEGORY_META = {
-  transport:          { label:'Transport',        color:'#f4a261', icon:'bus'},
-  electricity_home:   { label:'Home Electricity',  color:'#52b788', icon:'bolt'},
-  cooking:            { label:'Cooking Fuel',      color:'#e76f51', icon:'flame'},
-  food:               { label:'Food',              color:'#95d5b2', icon:'bowl'},
-  waste:              { label:'Waste',             color:'#6b4226', icon:'trash'},
-  water:              { label:'Water',             color:'#90e0ef', icon:'droplet'},
-  electricity_school: { label:'School Power',      color:'#2d6a4f', icon:'school'},
+  transport:   { label:'Transport',   labelNe:'यातायात',     color:'#f4a261', icon:'bus'},
+  electricity: { label:'Electricity', labelNe:'बिजुली',      color:'#52b788', icon:'bolt'},
+  cooking:     { label:'Cooking (LPG)',labelNe:'खाना (ग्यास)', color:'#e76f51', icon:'flame'},
+  waste:       { label:'Waste',       labelNe:'फोहोर',       color:'#6b4226', icon:'trash'},
+  stationery:  { label:'Stationery',  labelNe:'स्टेसनरी',    color:'#9b8cff', icon:'book'},
 };
 
 /* ─── Total impact message ───────────────────────────────────────────────*/
@@ -267,7 +310,7 @@ const COOK_USEFUL_PER_KG = { lpg: 7.48, firewood: 0.645 }; // useful kWh deliver
 export function cookingCompareDaily(fuel) {
   const lpg  = (COOK_USEFUL_KWH / COOK_USEFUL_PER_KG.lpg)      * EF.lpg_per_kg;
   const wood = (COOK_USEFUL_KWH / COOK_USEFUL_PER_KG.firewood) * EF.firewood_per_kg;
-  const elec = (COOK_USEFUL_KWH / 0.85)                        * EF.induction_per_kwh; // induction ~85% eff, clean hydro
+  const elec = (COOK_USEFUL_KWH / 0.85)                        * EF.grid_kwh; // induction ~85% eff, clean hydro grid
   if (fuel === 'lpg') return lpg;
   if (fuel === 'firewood') return wood;
   if (fuel === 'electric') return elec;

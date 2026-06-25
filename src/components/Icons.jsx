@@ -328,6 +328,12 @@ const PATHS = {
   heart: <path d="M12 20.5S3.6 14.9 3.6 9A4.4 4.4 0 0 1 12 7.1 4.4 4.4 0 0 1 20.4 9c0 5.9-8.4 11.5-8.4 11.5z" fill="currentColor" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />,
   camera: (<><rect x="3" y="7" width="18" height="13" rx="2.5" {...P} /><path d="M8 7l1.4-2.5h5.2L16 7" {...P} /><circle cx="12" cy="13.5" r="3.1" {...P} /></>),
   clock: (<><circle cx="12" cy="12" r="8.4" {...P} /><path d="M12 7v5l3.4 2" {...P} /></>),
+  users: (<><circle cx="9" cy="8.5" r="3" {...P} /><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" {...P} /><path d="M16 6.2a2.8 2.8 0 0 1 0 5.4M17.5 14.5c2.2.5 3.8 2.3 3.8 4.5" {...P} /></>),
+  shield: (<><path d="M12 3l7 2.5v5c0 4.5-3 8-7 9.5-4-1.5-7-5-7-9.5v-5z" {...P} /><path d="M9 12l2 2 4-4" {...P} /></>),
+  target: (<><circle cx="12" cy="12" r="8.5" {...P} /><circle cx="12" cy="12" r="4.6" {...P} /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /></>),
+  download: (<><path d="M12 3v11" {...P} /><path d="M8 11l4 4 4-4" {...P} /><path d="M5 19h14" {...P} /></>),
+  user: (<><circle cx="12" cy="8" r="4" {...P} /><path d="M5 20c0-3.5 3-6 7-6s7 2.5 7 6" {...P} /></>),
+  logout: (<><path d="M14 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2v-2" {...P} /><path d="M10 12h10M17 9l3 3-3 3" {...P} /></>),
   stop: <rect x="6" y="6" width="12" height="12" rx="2.6" fill="currentColor" stroke="none" />,
 };
 

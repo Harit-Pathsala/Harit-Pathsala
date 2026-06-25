@@ -13,7 +13,16 @@ const REGISTRY: Record<Voice, SoundDef> = { restore: {}, thud: {}, sparkle: {}, 
 let ctx: AudioContext | null = null;
 let master: GainNode | null = null;
 let muted = false;
+try { muted = typeof localStorage !== 'undefined' && localStorage.getItem('harit_sound') === 'off'; } catch { /* */ }
 const howls: Partial<Record<Voice, Howl>> = {};
+
+function applyMute(m: boolean): void {
+  muted = m;
+  if (master) master.gain.value = m ? 0 : 0.55;
+  if (amb) amb.gain.gain.value = m ? 0 : amb.gain.gain.value;
+}
+// keep in sync with the rest of the app's sound toggle (sfx.js dispatches the same event)
+if (typeof window !== 'undefined') window.addEventListener('harit-mute', (e: Event) => applyMute(!!(e as CustomEvent).detail));
 
 function ensure(): AudioContext | null {
   if (typeof window === 'undefined') return null;
@@ -77,7 +86,7 @@ function ensureAmbient(): Ambient | null {
 export const audio = {
   /** Call on the first user gesture to unlock the AudioContext. */
   init(): void { ensure(); },
-  setMuted(m: boolean): void { muted = m; if (master) master.gain.value = m ? 0 : 0.55; },
+  setMuted(m: boolean): void { applyMute(m); try { localStorage.setItem('harit_sound', m ? 'off' : 'on'); } catch { /* */ } try { window.dispatchEvent(new CustomEvent('harit-mute', { detail: m })); } catch { /* */ } },
   isMuted(): boolean { return muted; },
   play(v: Voice): void {
     if (muted) return;
@@ -90,21 +99,9 @@ export const audio = {
     }
     synth(v);
   },
-  /** Adaptive ambient bed: weather + valley clarity shape the air/wind/rain. */
-  setAmbient(profile: { weather?: string; clarity?: number }): void {
-    const a = ensureAmbient();
-    if (!a || !ctx) return;
-    const weather = profile.weather || 'clear';
-    let g = 0.035, cut = 650;
-    if (weather === 'monsoon' || weather === 'rain') { g = 0.11; cut = 2400; }
-    else if (weather === 'snow') { g = 0.05; cut = 480; }
-    else if (weather === 'dust') { g = 0.055; cut = 900; }
-    const clarity = profile.clarity == null ? 0.6 : profile.clarity;
-    cut *= 0.7 + clarity * 0.6;            // clearer valley → brighter air
-    const now = ctx.currentTime;
-    a.gain.gain.linearRampToValueAtTime(muted ? 0 : g, now + 0.8);
-    a.filter.frequency.linearRampToValueAtTime(cut, now + 0.8);
-  },
+  /** Ambient bed disabled — the looping wind/rain noise was distracting.
+   *  Discrete event sounds (restore/sparkle/thud/tap, bells) still play. */
+  setAmbient(_profile: { weather?: string; clarity?: number }): void { return; },
   stopAmbient(): void {
     if (amb && ctx) amb.gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.5);
   },

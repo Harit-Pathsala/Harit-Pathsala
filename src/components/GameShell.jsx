@@ -4,6 +4,8 @@ import { BanaFace } from './Bana.jsx';
 import Icon from './Icons.jsx';
 import { INTROS } from '../game/introLines.js';
 import { GameGate } from '../game/gameGate.js';
+import { useGameStore } from '../state/gameStore.ts';
+import BanaHelper from './BanaHelper.jsx';
 
 // Opens a mission/explorer directly as a full-bleed environment. Bana's intro is
 // overlaid on the LIVE scene as a Messenger-style speech bar (light-green theme);
@@ -14,6 +16,7 @@ export default function GameShell({ route, children, onExit }) {
   const [page, setPage] = useState(0);
 
   const key = route.kind === 'explorer' ? `explorer:${route.level}` : `mission:${route.missionId}`;
+  const onWin = () => useGameStore.getState().completeLevel(key);   // heals the world one step on first win
   const d = INTROS[key];
   const lines = d ? (lang === 'ne' ? d.ne : d.en) : [];
   const last = page >= lines.length - 1;
@@ -24,7 +27,7 @@ export default function GameShell({ route, children, onExit }) {
   return (
     <div className="game-shell">
       {/* the actual game — forced full-bleed by CSS; frozen until intro dismissed */}
-      <GameGate.Provider value={{ active }}><div className="gs-content">{children}</div></GameGate.Provider>
+      <GameGate.Provider value={{ active }}><div className="gs-content">{React.Children.map(children, (c) => (React.isValidElement(c) ? React.cloneElement(c, { onWin, onMap: exit }) : c))}</div></GameGate.Provider>
 
       <button className="hud-btn gs-exit" onClick={exit}>
         <Icon name="arrowLeft" size={16} /> {lang === 'ne' ? 'नक्सा' : 'Map'}
@@ -46,6 +49,8 @@ export default function GameShell({ route, children, onExit }) {
           </div>
         </div>
       )}
+
+      {active && <BanaHelper levelKey={key} />}
     </div>
   );
 }

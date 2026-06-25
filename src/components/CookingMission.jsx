@@ -23,7 +23,7 @@ const DISHES = [
 const GREEN_LO = 50, GREEN_HI = 82, BURN_T = 88;
 const GREEN_BUDGET = 0.45, OK_BUDGET = 0.95, CARBON_CAP = 1.7, TIME = 75;
 
-export default function CookingMission() {
+export default function CookingMission({ onWin, onMap }) {
   const { lang } = useLang();
   const tt = (en, ne) => (lang === 'ne' ? ne : en);
   const L = (o, k) => (lang === 'ne' && o[`${k}_ne`] !== undefined ? o[`${k}_ne`] : o[k]);
@@ -114,7 +114,7 @@ export default function CookingMission() {
     // ── cooking state ──
     let temp = 20, carbon = 0, burn = 0, dish = 0, done = 0, t = TIME, acc = 0, puffT = 0;
     let last = performance.now();
-    const finish = (win, rating, reason) => { if (ended) return; ended = true; if (win) useGameStore.getState().addEcoPoints(rating === 'green' ? 30 : rating === 'ok' ? 20 : 12); setResult({ win, rating, reason }); setPhase('done'); };
+    const finish = (win, rating, reason) => { if (ended) return; ended = true; if (win) onWin && onWin(); if (win) useGameStore.getState().addEcoPoints(rating === 'green' ? 30 : rating === 'ok' ? 20 : 12); setResult({ win, rating, reason }); setPhase('done'); };
     const spawnPuff = (smoke) => {
       const p = puffs.find((q) => q.userData.life < 0); if (!p) return;
       p.position.set((Math.random() - 0.5) * 0.4, 2.2, -1 + (Math.random() - 0.5) * 0.4);
@@ -274,7 +274,7 @@ export default function CookingMission() {
       )}
 
       {phase === 'done' && (
-        <div className="card center" style={{ maxWidth: 560, margin: '0 auto' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(10,18,12,.42)', backdropFilter: 'blur(7px)' }}><div className="card center" style={{ maxWidth: 470, margin: 0, maxHeight: '88vh', overflowY: 'auto' }}>
           {result?.win ? (
             <>
               <div style={{ color: 'var(--primary)', display: 'grid', placeItems: 'center' }}><Icon name={result.rating === 'green' ? 'leaf' : result.rating === 'ok' ? 'bowl' : 'smog'} size={42} /></div>
@@ -290,9 +290,16 @@ export default function CookingMission() {
             </>
           )}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 10 }}>
-            <button className="btn" onClick={() => setPhase('intro')}>{tt('Try again', 'फेरि')}</button>
+            {result?.win ? (
+            <button className="btn" onClick={onMap}>{tt('Continue', 'जारी राख्नुहोस्')}</button>
+          ) : (
+            <>
+              <button className="btn" onClick={() => setPhase('intro')}>{tt('Try again', 'फेरि')}</button>
+              <button className="btn" onClick={onMap} style={{ background: '#eef3ee', color: '#1c3326' }}>{tt('Back to map', 'नक्सामा फर्कनुहोस्')}</button>
+            </>
+          )}
           </div>
-        </div>
+        </div></div>
       )}
     </div>
   );

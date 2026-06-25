@@ -87,7 +87,7 @@ export const NP = {
   white: 0xf2ece0, roofTile: 0xb24a32, roofGold: 0xd6a93c, gold: 0xe9c34a,
   wood: 0x6b4a2f, woodDark: 0x4a321f, maroon: 0x7a232b, saffron: 0xe98a2b,
   tin: 0x7f8a90, glass: 0x9fd6e6, stone: 0x8b8a86, snow: 0xf4fbff, rock: 0x6f7783,
-  green: 0x4caf50, leaf: 0x2f7d4f, water: 0x57b6dd, busGreen: 0x2f7d4f, taxiYellow: 0xf2b705,
+  green: 0x4caf50, leaf: 0x2f7d4f, water: 0x4eaeac, busGreen: 0x2f7d4f, taxiYellow: 0xf2b705,
   flag: [0x2f6cb0, 0xffffff, 0xdc2f2f, 0x2f9e44, 0xf2b705], // blue white red green yellow (Lungta)
 };
 
@@ -215,10 +215,12 @@ export function makeBirdFlock(center = new THREE.Vector3(0, 12, 0), n = 14, radi
 /* ── CLOUDS — soft drifting puffs ───────────────────────────────────────── */
 export function makeCloud() {
   const g = new THREE.Group();
-  const m = std(0xffffff, { roughness: 1, emissive: 0xdfeefc, emissiveIntensity: 0.12 });
-  for (let i = 0; i < 4; i++) {
-    const p = new THREE.Mesh(new THREE.IcosahedronGeometry(rand(0.9, 1.6), 0), m);
-    p.position.set(rand(-1.6, 1.6), rand(-0.2, 0.3), rand(-0.7, 0.7));
+  const m = std(0xfffaf2, { roughness: 1, emissive: 0xfff0dc, emissiveIntensity: 0.28, flatShading: true });
+  const n = 5 + Math.floor(rand(0, 3));
+  for (let i = 0; i < n; i++) {
+    const p = new THREE.Mesh(new THREE.IcosahedronGeometry(rand(1.1, 2.0), 0), m);
+    p.position.set(rand(-2.6, 2.6), rand(-0.3, 0.45), rand(-1.0, 1.0));
+    p.scale.y = rand(0.58, 0.82);
     p.castShadow = false;
     g.add(p);
   }
@@ -226,17 +228,53 @@ export function makeCloud() {
 }
 
 /* ── TREE (broadleaf / pipal-ish) ───────────────────────────────────────── */
-export function makeTree(scale = 1) {
+const TREE_KINDS = ['green', 'green', 'green', 'green', 'cherry', 'purple', 'fruit', 'blossom'];
+function canopyColor(kind) {
+  if (kind === 'cherry') return new THREE.Color().setHSL(0.93, rand(0.42, 0.58), rand(0.74, 0.82));        // pink blossom
+  if (kind === 'purple') return new THREE.Color().setHSL(0.77, rand(0.4, 0.55), rand(0.56, 0.66));         // jacaranda purple
+  if (kind === 'blossom') return new THREE.Color().setHSL(0.07, rand(0.18, 0.32), rand(0.82, 0.9));        // cream / peach blossom
+  if (kind === 'autumn') return new THREE.Color().setHSL(rand(0.04, 0.11), rand(0.6, 0.78), rand(0.42, 0.52)); // fiery autumn
+  if (kind === 'winter') return new THREE.Color().setHSL(0.32, rand(0.05, 0.13), rand(0.62, 0.74));        // frosted / bare
+  if (kind === 'white') return new THREE.Color(0xf4f5f1);                                                  // pure white leaves
+  return new THREE.Color().setHSL(0.33 + rand(-0.03, 0.04), rand(0.45, 0.6), rand(0.28, 0.4));             // leafy green (also fruit)
+}
+// kind  -> canopy colour;  shape -> silhouette (round | tall | columnar | umbrella)
+export function makeTree(scale = 1, kind, shape) {
   const g = new THREE.Group();
-  const th = rand(0.6, 1.0) * scale;
-  const trunk = cyl(0.06 * scale, 0.1 * scale, th, 6, NP.wood, { flatShading: true });
-  trunk.position.y = th / 2;
-  g.add(trunk);
-  const base = new THREE.Color().setHSL(0.33 + rand(-0.03, 0.04), rand(0.45, 0.6), rand(0.28, 0.4));
-  for (let i = 0; i < 3; i++) {
-    const b = mesh(new THREE.IcosahedronGeometry(rand(0.34, 0.5) * scale, 0), base.clone().offsetHSL(0, 0, rand(-0.04, 0.04)), { flatShading: true });
-    b.position.set(rand(-0.22, 0.22), th + rand(-0.05, 0.28), rand(-0.22, 0.22));
-    g.add(b);
+  kind = kind || pick(TREE_KINDS);
+  shape = shape || pick(['round', 'round', 'round', 'tall', 'columnar', 'umbrella']);
+  const base = canopyColor(kind);
+  const tint = () => base.clone().offsetHSL(0, 0, rand(-0.04, 0.04));
+  const blobs = [];
+
+  if (shape === 'columnar') {
+    // narrow spire — poplar / cypress
+    const th = rand(0.5, 0.8) * scale;
+    const trunk = cyl(0.05 * scale, 0.08 * scale, th, 6, NP.wood, { flatShading: true }); trunk.position.y = th / 2; g.add(trunk);
+    const n = 4, seg = rand(0.5, 0.66) * scale;
+    for (let i = 0; i < n; i++) { const r = (0.5 - i * 0.09) * scale; const c = mesh(new THREE.ConeGeometry(r, seg * 1.8, 7), tint(), { flatShading: true }); c.position.y = th + i * seg; g.add(c); blobs.push(c); }
+  } else if (shape === 'umbrella') {
+    // tall clear trunk + wide flat canopy — acacia / rain-tree
+    const th = rand(1.1, 1.5) * scale;
+    const trunk = cyl(0.07 * scale, 0.11 * scale, th, 6, NP.wood, { flatShading: true }); trunk.position.y = th / 2; g.add(trunk);
+    for (let i = 0; i < 3; i++) { const c = mesh(new THREE.SphereGeometry(rand(0.55, 0.78) * scale, 9, 6), tint(), { flatShading: true }); c.scale.y = 0.42; c.position.set(rand(-0.32, 0.32), th + rand(0, 0.16), rand(-0.32, 0.32)); g.add(c); blobs.push(c); }
+  } else {
+    // rounded cluster (default), optionally tall
+    const tall = shape === 'tall';
+    const th = rand(0.6, 1.0) * scale * (tall ? 1.5 : 1);
+    const trunk = cyl(0.06 * scale, 0.1 * scale, th, 6, NP.wood, { flatShading: true }); trunk.position.y = th / 2; g.add(trunk);
+    const nb = tall ? 4 : 3;
+    for (let i = 0; i < nb; i++) { const b = mesh(new THREE.IcosahedronGeometry(rand(0.34, 0.5) * scale, 0), tint(), { flatShading: true }); b.position.set(rand(-0.22, 0.22), th + rand(-0.05, 0.28) + (tall ? i * 0.12 : 0), rand(-0.22, 0.22)); g.add(b); blobs.push(b); }
+  }
+
+  // fruit dots on a fruit tree
+  if (kind === 'fruit') {
+    const fc = pick([0xe23b2e, 0xff8c1a, 0xf2c014]);
+    for (let i = 0; i < 5; i++) { const f = mesh(new THREE.IcosahedronGeometry(0.075 * scale, 0), fc, { flatShading: true, noOutline: true }); const bb = pick(blobs); f.position.set(bb.position.x + rand(-0.3, 0.3), bb.position.y + rand(-0.28, 0.08), bb.position.z + rand(-0.3, 0.3)); g.add(f); }
+  }
+  // fallen petals / leaves under flowering or white trees
+  if (kind === 'cherry' || kind === 'blossom' || kind === 'autumn' || kind === 'white') {
+    for (let i = 0; i < 4; i++) { const p = mesh(new THREE.IcosahedronGeometry(0.05 * scale, 0), base.clone().offsetHSL(0, 0, 0.07), { flatShading: true, noOutline: true }); p.position.set(rand(-0.55, 0.55), rand(0.02, 0.12), rand(-0.55, 0.55)); g.add(p); }
   }
   return g;
 }
@@ -611,17 +649,42 @@ export function makeShop(color = NP.mud) {
 
 /* ── STREET LAMP ────────────────────────────────────────────────────────── */
 export function makeStreetLamp() {
+  // Cobra-head lamp: the arm reaches out over the road (+x) and the lens faces
+  // DOWN onto the road. Callers rotate the lamp so +x points at the carriageway.
   const g = new THREE.Group();
-  const pole = cyl(0.05, 0.07, 2.4, 8, 0x4b5358);
-  pole.position.y = 1.2;
-  g.add(pole);
-  const arm = box(0.5, 0.05, 0.05, 0x4b5358);
-  arm.position.set(0.22, 2.35, 0);
-  g.add(arm);
-  const head = mesh(new THREE.SphereGeometry(0.13, 10, 8), 0xfff1c0, { emissive: 0xffe28a, emissiveIntensity: 0.5 });
-  head.position.set(0.42, 2.3, 0);
-  head.castShadow = false;
+  const c = 0x4b5358;
+  const base = cyl(0.16, 0.2, 0.24, 8, 0x3a4046); base.position.y = 0.12; g.add(base);
+  const pole = cyl(0.07, 0.1, 3.3, 8, c); pole.position.y = 1.7; g.add(pole);
+  const arm = box(1.25, 0.08, 0.08, c); arm.position.set(0.6, 3.3, 0); g.add(arm);
+  const bend = box(0.1, 0.34, 0.1, c); bend.position.set(1.18, 3.14, 0); g.add(bend);
+  const head = new THREE.Group();
+  const housing = box(0.52, 0.16, 0.26, 0x2a2e31); head.add(housing);
+  const lens = mesh(new THREE.BoxGeometry(0.44, 0.05, 0.2), 0xfff1c0, { emissive: 0xffe39a, emissiveIntensity: 0.7, noOutline: true });
+  lens.position.y = -0.1; lens.castShadow = false; head.add(lens);     // glowing lens on the underside → road
+  head.position.set(1.18, 2.95, 0); head.rotation.z = -0.16;           // tilt the head down over the road
   g.add(head);
+  return g;
+}
+
+/* ── ZEBRA CROSSING — white bars laid along the travel direction (local +Z) ─ */
+export function makeZebraCrossing(roadW = 3, bandLen = 1.0, n = 6) {
+  const g = new THREE.Group();
+  const mat = std(0xeef0ec, { roughness: 1, noOutline: true });
+  const span = roadW * 0.86, sw = span / (n * 2 - 1);   // n bars + (n-1) equal gaps
+  for (let i = 0; i < n; i++) {
+    const bar = new THREE.Mesh(new THREE.PlaneGeometry(sw, bandLen), mat);
+    bar.rotation.x = -Math.PI / 2;
+    bar.position.set(-span / 2 + sw / 2 + i * sw * 2, 0.035, 0);
+    bar.receiveShadow = true; g.add(bar);
+  }
+  return g;
+}
+
+/* ── FOOTPATH — a raised concrete kerb strip that runs ALONG the road (local Z) */
+export function makeFootpath(length = 38, width = 1.5) {
+  const g = new THREE.Group();
+  const pave = box(width, 0.16, length, 0xbcb6aa, { roughness: 1, noOutline: true }); pave.position.y = 0.08; pave.userData.paved = true; pave.userData.walkable = true; g.add(pave);
+  const top = box(width - 0.12, 0.06, length, 0xd6cfc0, { noOutline: true }); top.position.y = 0.17; top.userData.paved = true; top.userData.walkable = true; g.add(top);
   return g;
 }
 
@@ -889,7 +952,7 @@ export function makeIntersectionSignal(scene) {
 
 export function makeTraffic(scene, routes, perRoute = 2, signal = null) {
   const cars = [];
-  const STOP = 2.6;   // stop-line distance from intersection centre
+  const STOP = 4.2;   // stop-line distance from centre — keeps cars behind the zebra + light
   const GAP = 3.6;    // min following gap in a lane
   const ACCEL = 3.0;  // speed easing toward cruise
   routes.forEach((route, ri) => {
@@ -986,7 +1049,7 @@ export function makeDharahara() {
    Per-building colliders are set so the plaza interior stays walkable. */
 export function makeDurbarSquare() {
   const g = new THREE.Group();
-  const plaza = box(14, 0.12, 14, NP.brickDark, { noOutline: true }); plaza.position.y = 0.06; g.add(plaza);
+  const plaza = box(14, 0.12, 14, NP.brickDark, { noOutline: true }); plaza.position.y = 0.06; plaza.userData.paved = true; plaza.userData.walkable = true; g.add(plaza);
   for (const off of [-4, 0, 4]) {
     const lh = box(14, 0.13, 0.12, 0x5a2c1e, { noOutline: true }); lh.position.set(0, 0.066, off); g.add(lh);
     const lv = box(0.12, 0.13, 14, 0x5a2c1e, { noOutline: true }); lv.position.set(off, 0.066, 0); g.add(lv);
@@ -1015,7 +1078,7 @@ export function buildKathmanduValley(scene) {
   const mkRoad = (w, l, x, z, rot = 0) => {
     const r = new THREE.Mesh(new THREE.PlaneGeometry(w, l), roadMat);
     r.rotation.x = -Math.PI / 2; r.rotation.z = rot;
-    r.position.set(x, 0.02, z); r.receiveShadow = true; scene.add(r);
+    r.position.set(x, 0.02, z); r.receiveShadow = true; r.userData.paved = true; scene.add(r);
     // dashed centre line
     const line = new THREE.Mesh(new THREE.PlaneGeometry(0.12, l), std(0xf2d24a, { roughness: 1 }));
     line.rotation.x = -Math.PI / 2; line.rotation.z = rot; line.position.set(x, 0.03, z); scene.add(line);
@@ -1077,7 +1140,7 @@ export function buildKathmanduValley(scene) {
   // street furniture along avenues: lamps, power poles, bins
   const poleZ = [];
   for (let s = -40; s <= 40; s += 10) {
-    add(makeStreetLamp(), 2.1, s);
+    add(makeStreetLamp(), 2.1, s, Math.PI);
     add(makePowerPole(), -2.2, s + 5);
     poleZ.push(s + 5);
     add(makeStreetLamp(), s, 2.1, Math.PI / 2);
@@ -1095,13 +1158,15 @@ export function buildKathmanduValley(scene) {
       scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), wireMat));
     }
   }
-  // zebra crossings at the four approaches to the crossroads
-  const zebraMat = std(0xeaeaea, { roughness: 1 });
-  const zbar = (w, d, x, z) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, d), zebraMat); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.03, z); scene.add(m); };
-  for (let k = 0; k < 5; k++) {
-    const off = (k - 2) * 0.45;
-    zbar(2.8, 0.22, 0, 2.6 + off); zbar(2.8, 0.22, 0, -2.6 - off);   // across N–S road
-    zbar(0.22, 2.8, 2.6 + off, 0); zbar(0.22, 2.8, -2.6 - off, 0);   // across E–W road
+  // proper zebra crossings at the four approaches (set IN FRONT of the stop line)
+  for (const [zx, zz, zr] of [[0, 2, 0], [0, -2, 0], [2, 0, Math.PI / 2], [-2, 0, Math.PI / 2]]) {
+    const zc = makeZebraCrossing(3, 1.0, 6); zc.position.set(zx, 0, zz); zc.rotation.y = zr; scene.add(zc);
+  }
+  // footpaths flanking both avenues (broken at the crossroads)
+  for (const side of [-1, 1]) for (const [a, b] of [[4, 44], [-44, -4]]) {
+    const len = b - a, fz = (a + b) / 2;
+    const f1 = makeFootpath(len, 1.5); f1.position.set(side * 2.35, 0, fz); scene.add(f1);
+    const f2 = makeFootpath(len, 1.5); f2.position.set(fz, 0, side * 2.35); f2.rotation.y = Math.PI / 2; scene.add(f2);
   }
 
   // drifting clouds
@@ -1256,7 +1321,7 @@ export function buildBiome(scene, params) {
     const roadMat = std(0x3a3a3e, { roughness: 1 });
     const mkRoad = (w, l, rot) => {
       const r = new THREE.Mesh(new THREE.PlaneGeometry(w, l), roadMat);
-      r.rotation.x = -Math.PI / 2; r.rotation.z = rot; r.position.y = 0.02; r.receiveShadow = true; scene.add(r);
+      r.rotation.x = -Math.PI / 2; r.rotation.z = rot; r.position.y = 0.02; r.receiveShadow = true; r.userData.paved = true; scene.add(r);
     };
     mkRoad(3, 90, 0); mkRoad(3, 90, Math.PI / 2);
     const Y = 0;
@@ -1271,6 +1336,15 @@ export function buildBiome(scene, params) {
     const traffic = makeTraffic(scene, routes, (params.traffic && params.traffic.perRoute) || 2, signal);
     trafficCars = traffic.cars;
     updaters.push(traffic.update);
+    // shared crossings + footpaths so every urban explorer matches
+    for (const [zx, zz, zr] of [[0, 2, 0], [0, -2, 0], [2, 0, Math.PI / 2], [-2, 0, Math.PI / 2]]) {
+      const zc = makeZebraCrossing(3, 1.0, 6); zc.position.set(zx, 0, zz); zc.rotation.y = zr; scene.add(zc);
+    }
+    for (const side of [-1, 1]) for (const [a, b] of [[4, 44], [-44, -4]]) {
+      const len = b - a, fz = (a + b) / 2;
+      const f1 = makeFootpath(len, 1.5); f1.position.set(side * 2.35, 0, fz); scene.add(f1);
+      const f2 = makeFootpath(len, 1.5); f2.position.set(fz, 0, side * 2.35); f2.rotation.y = Math.PI / 2; scene.add(f2);
+    }
     if (params.houses && params.houses.blocks) {
       params.houses.blocks.forEach((b) => {
         for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) {
@@ -1282,7 +1356,8 @@ export function buildBiome(scene, params) {
       });
     }
     for (let s = -40; s <= 40; s += 12) {
-      add(makeStreetLamp(), 2.1, s);
+      add(makeStreetLamp(), 2.1, s, Math.PI);
+      add(makeStreetLamp(), s, 2.1, Math.PI / 2);
       add(makePowerPole(), -2.2, s + 6);
     }
   }
@@ -1504,7 +1579,7 @@ export function makeWaterstation() {
 /* glacial lake: turquoise water + moraine rim + ice chunks (GLOF theme) */
 export function makeGlaciallake() {
   const g = new THREE.Group();
-  const lake = new THREE.Mesh(new THREE.CircleGeometry(2.2, 24), std(0x4fc7d6, { roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.9 }));
+  const lake = new THREE.Mesh(new THREE.CircleGeometry(2.2, 24), std(0x4eaeac, { roughness: 0.2, metalness: 0.1, transparent: true, opacity: 0.9 }));
   lake.rotation.x = -Math.PI / 2; lake.position.y = 0.05; lake.receiveShadow = true; g.add(lake);
   for (let i = 0; i < 20; i++) { const a = (i / 20) * Math.PI * 2; const s = mesh(new THREE.DodecahedronGeometry(rand(0.2, 0.4), 0), pick([0x8a8378, 0x9aa3ad, NP.snow]), { flatShading: true }); s.position.set(Math.cos(a) * 2.5, 0.12, Math.sin(a) * 2.5); s.rotation.set(rand(0, 3), rand(0, 3), rand(0, 3)); g.add(s); }
   for (let i = 0; i < 5; i++) { const ice = mesh(new THREE.IcosahedronGeometry(rand(0.15, 0.3), 0), 0xdff3fb, { flatShading: true, roughness: 0.3 }); ice.position.set(rand(-1.5, 1.5), 0.12, rand(-1.5, 1.5)); g.add(ice); }
@@ -1600,7 +1675,7 @@ function makePerson() {
 
 /* A wandering crowd of pedestrians that mill around a bounded area.
    Returns a Group with userData.update(dt) — call it each frame. */
-export function makeCrowd(n = 10, area = 16) {
+export function makeCrowd(n = 10, area = 16, solids = []) {
   const g = new THREE.Group();
   const people = [];
   for (let i = 0; i < n; i++) {
@@ -1615,6 +1690,11 @@ export function makeCrowd(n = 10, area = 16) {
       p.t += dt;
       p.o.position.x += Math.sin(p.dir) * p.spd * dt;
       p.o.position.z += Math.cos(p.dir) * p.spd * dt;
+      // keep pedestrians out of buildings / large props
+      for (const s of solids) {
+        const dx = p.o.position.x - s.x, dz = p.o.position.z - s.z, dd = Math.hypot(dx, dz), md = s.r + 0.45;
+        if (dd < md) { if (dd > 1e-3) { p.o.position.x = s.x + (dx / dd) * md; p.o.position.z = s.z + (dz / dd) * md; } p.dir = Math.atan2(dx, dz) + (Math.random() - 0.5) * 0.6; }
+      }
       p.o.rotation.y = p.dir;
       p.o.position.y = Math.abs(Math.sin(p.t * p.spd * 3.4)) * 0.045;
       const sw = Math.sin(p.t * p.spd * 6) * 0.5;
@@ -2187,7 +2267,7 @@ function makeJanakiMandir() {
 // sacred bathing pond with stone ghats (Janakpur kunda / Lumbini Puskarini)
 function makeSacredPond() {
   const g = new THREE.Group();
-  const water = mesh(new THREE.CircleGeometry(4.2, 28), 0x3f7fb0, { transparent: true, opacity: 0.85, roughness: 0.3, metalness: 0.1 });
+  const water = mesh(new THREE.CircleGeometry(4.2, 28), 0x4eaeac, { transparent: true, opacity: 0.85, roughness: 0.3, metalness: 0.1 });
   water.rotation.x = -Math.PI / 2; water.position.y = 0.06; g.add(water);
   for (let k = 0; k < 3; k++) { const r = 4.4 + k * 0.45; const ring = mesh(new THREE.RingGeometry(r, r + 0.45, 28), 0xcdbfa0); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.05 - k * 0.12; g.add(ring); }
   for (let i = 0; i < 5; i++) { const pad = mesh(new THREE.CircleGeometry(0.4, 10), 0x4a9e3f); pad.rotation.x = -Math.PI / 2; pad.position.set(rand(-3, 3), 0.08, rand(-3, 3)); g.add(pad); }
@@ -2258,7 +2338,7 @@ Object.assign(LANDMARK_BUILDERS, {
 // rectangular brick Puskarini sacred pond with a stepped ghat toward the temple
 function makeRectPond(w = 10, d = 7) {
   const g = new THREE.Group();
-  const water = mesh(new THREE.PlaneGeometry(w, d), 0x3f86b8, { transparent: true, opacity: 0.86, roughness: 0.25 });
+  const water = mesh(new THREE.PlaneGeometry(w, d), 0x4eaeac, { transparent: true, opacity: 0.86, roughness: 0.25 });
   water.rotation.x = -Math.PI / 2; water.position.y = 0.08; g.add(water);
   const rimC = 0xcdbfa0, rim = 0.45;
   const top = box(w + rim * 2, 0.5, rim, rimC); top.position.set(0, 0.18, -(d / 2 + rim / 2)); g.add(top);
@@ -2300,7 +2380,13 @@ function makeBoat() {
   const canopy = box(1.95, 0.12, 1.95, canopyC); canopy.position.set(0, 1.7, -0.1); g.add(canopy);
   for (const [px, pz] of [[-0.82, 0.8], [0.82, 0.8], [-0.82, -1.0], [0.82, -1.0]]) { const pole = cyl(0.05, 0.05, 1.0, 6, 0xf2ece0); pole.position.set(px, 1.2, pz); g.add(pole); }
   const wheel = cyl(0.5, 0.5, 1.2, 10, 0xf2d24a); wheel.rotation.z = Math.PI / 2; wheel.position.set(0, 0.42, -1.95); g.add(wheel);
-  g.userData.wheels = true; g.userData.boat = true;
+  // "ride me" beacon: a glowing ring on the water + a bobbing arrow (hidden once aboard)
+  const beacon = new THREE.Group();
+  const bring = mesh(new THREE.RingGeometry(1.7, 2.1, 28), 0x8fe39a, { noOutline: true });
+  bring.rotation.x = -Math.PI / 2; bring.position.y = 0.14; bring.material.transparent = true; bring.material.opacity = 0.75; beacon.add(bring);
+  const arrow = cone(0.42, 0.8, 4, 0x3fae5a); arrow.rotation.x = Math.PI; arrow.position.y = 3.0; beacon.add(arrow);
+  g.add(beacon);
+  g.userData.wheels = true; g.userData.boat = true; g.userData.wheelMesh = wheel; g.userData.beacon = beacon; g.userData.beaconArrow = arrow;
   return g;
 }
 
@@ -2329,8 +2415,13 @@ export function buildLumbiniGarden(scene) {
   // ── Central Canal (the boating channel) ────────────────────────────
   const canalMinZ = 8, canalMaxZ = 40, canalHalfW = 3;
   const canalLen = canalMaxZ - canalMinZ, canalCz = (canalMinZ + canalMaxZ) / 2;
-  const canalWater = mesh(new THREE.PlaneGeometry(canalHalfW * 2, canalLen), 0x3f86b8, { transparent: true, opacity: 0.85, roughness: 0.25 });
+  const canalWater = mesh(new THREE.PlaneGeometry(canalHalfW * 2, canalLen), 0x4eaeac, { transparent: true, opacity: 0.85, roughness: 0.25 });
   canalWater.rotation.x = -Math.PI / 2; canalWater.position.set(0, 0.1, canalCz); scene.add(canalWater);
+  for (let i = 0; i < 8; i++) {
+    const pad = mesh(new THREE.CircleGeometry(0.5 + Math.random() * 0.35, 12), 0x3f9e4f, { noOutline: true });
+    pad.rotation.x = -Math.PI / 2; pad.position.set((Math.random() * 2 - 1) * 2.1, 0.12, canalMinZ + 3 + Math.random() * (canalLen - 6)); scene.add(pad);
+    if (Math.random() < 0.5) { const lotus = cone(0.22, 0.32, 6, 0xf2a6c4); lotus.position.set(pad.position.x, 0.24, pad.position.z); scene.add(lotus); }
+  }
   // low stone embankments + railing posts down both banks (visual)
   const stone = 0xcdbfa0;
   for (const side of [-1, 1]) {
@@ -2379,30 +2470,143 @@ export function buildLumbiniGarden(scene) {
   };
 }
 
+/* ─────────────────────────────────────────────────────────────────────────
+   DHULIKHEL — hill town: Kathmandu University campus + ring road, the Newari
+   old town with Chandeshwori temple, hillside terraces and a sunrise viewtower
+   ───────────────────────────────────────────────────────────────────────── */
+
+// simple conifer (Dhulikhel is known for its pine ridges)
+function makePine(scale = 1) {
+  const g = new THREE.Group();
+  const trunk = cyl(0.12, 0.18, 1.2, 6, 0x6b4a2a); trunk.position.y = 0.6; g.add(trunk);
+  const greens = [0x2f6d3a, 0x387a42, 0x2a5f33];
+  for (let i = 0; i < 3; i++) { const c = cone(1.15 - i * 0.28, 1.35 - i * 0.22, 7, greens[i % 3], { flatShading: true }); c.position.y = 1.2 + i * 0.82; g.add(c); }
+  g.scale.setScalar(scale); return g;
+}
+
+export function buildDhulikhel(scene) {
+  const updaters = [];
+  const add = (o, x, z, ry = 0) => { o.position.set(x, o.position.y || 0, z); o.rotation.y = ry; o.traverse((m) => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); scene.add(o); return o; };
+
+  // dramatic Himalayan backdrop (Dhulikhel sunrise) + warm low sun
+  scene.add(makeHimalayas({ count: 15, radius: 158, height: 56 }));
+  const sun = makeSun(); sun.position.set(-60, 48, -70); scene.add(sun);
+
+  // ── sunrise viewtower (north viewpoint) + prayer flags ──
+  add(makeViewTower(), 0, -15);
+  const pf = makePrayerFlags(9, 0.7); pf.position.set(0, 5.5, -13); scene.add(pf);
+
+  // ── Kathmandu University campus (east) ──
+  // entrance sign + flanking pillars, facing the approach from the town
+  const sign = makeSignboard('Kathmandu University', 0x1f6f4a); sign.scale.setScalar(1.8); sign.position.set(11, 2.0, 3); sign.rotation.y = -Math.PI / 2; scene.add(sign);
+  for (const gz of [0.6, 5.4]) { const pillar = box(0.55, 3.0, 0.55, NP.plaster); pillar.position.set(11, 1.5, gz); scene.add(pillar); }
+  // modern academic blocks around a quad (centre ~ (24,3))
+  for (const [bx, bz] of [[18, -3], [27, -2], [29, 6], [20, 9], [17, 7], [25, 11]]) {
+    const blk = makeModernBuilding(); blk.scale.setScalar(1.5); blk.userData.radius = 2.6; add(blk, bx, bz);
+  }
+  // a wider administration block with a coloured band
+  const admin = new THREE.Group();
+  const ab = box(5.5, 4.2, 3.2, 0xe9e3d6, { flatShading: true }); ab.position.y = 2.1; admin.add(ab);
+  const band = box(5.6, 0.5, 3.3, 0x2f7d4f); band.position.y = 3.4; admin.add(band);
+  const aroof = box(5.7, 0.3, 3.4, 0x9aa0a4); aroof.position.y = 4.3; admin.add(aroof);
+  for (let f = 0; f < 3; f++) for (let c = -1; c <= 1; c++) { const w = box(0.7, 0.7, 0.05, NP.glass); w.position.set(c * 1.5, 1.1 + f * 1.1, 1.62); admin.add(w); }
+  admin.userData.radius = 3.2; add(admin, 24, 1);
+  // grass quad in the middle of the campus
+  const quad = new THREE.Mesh(new THREE.CircleGeometry(4.5, 24), std(0x86b35a, { roughness: 1 })); quad.rotation.x = -Math.PI / 2; quad.position.set(23, 0.04, 5); scene.add(quad);
+
+  // ── KU ring road (oval asphalt loop around the campus) + circling buses ──
+  const RC = { x: 23, z: 3 }, RIN = 9.5, ROUT = 12.5, RMID = (RIN + ROUT) / 2;
+  const ring = new THREE.Mesh(new THREE.RingGeometry(RIN, ROUT, 48), std(0x3c3c40, { roughness: 1 })); ring.rotation.x = -Math.PI / 2; ring.position.set(RC.x, 0.03, RC.z); scene.add(ring);
+  const midline = new THREE.Mesh(new THREE.RingGeometry(RMID - 0.06, RMID + 0.06, 48), std(0xf2d24a, { roughness: 1 })); midline.rotation.x = -Math.PI / 2; midline.position.set(RC.x, 0.05, RC.z); scene.add(midline);
+  const ringBuses = [];
+  for (let i = 0; i < 3; i++) { const b = makeMicrobus(); b.userData.ang = i * (Math.PI * 2 / 3); scene.add(b); ringBuses.push(b); }
+  updaters.push((dt) => { for (const b of ringBuses) { b.userData.ang += dt * 0.2; const a = b.userData.ang; b.position.set(RC.x + Math.cos(a) * RMID, 0, RC.z + Math.sin(a) * RMID); b.rotation.y = -a - Math.PI / 2; } });
+  // a couple of street lamps along the ring
+  for (const a of [0.4, 1.5, 2.7, 3.8, 5.0]) add(makeStreetLamp(), RC.x + Math.cos(a) * (ROUT + 0.7), RC.z + Math.sin(a) * (ROUT + 0.7), Math.PI - a);
+  // power poles (same model as Kathmandu) with sagging wires along the west approach
+  const dpoleZ = [-9, -1, 7, 15];
+  for (const z of dpoleZ) add(makePowerPole(), 6, z);
+  const dWire = new THREE.LineBasicMaterial({ color: 0x1a1a1a, transparent: true, opacity: 0.8 });
+  for (let i = 0; i < dpoleZ.length - 1; i++) for (const yArm of [2.7, 3.0]) {
+    const pts = [];
+    for (let t = 0; t <= 1; t += 0.12) { const sag = -Math.sin(t * Math.PI) * 0.45; pts.push(new THREE.Vector3(6 + rand(-0.04, 0.04), yArm + sag, THREE.MathUtils.lerp(dpoleZ[i], dpoleZ[i + 1], t))); }
+    scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), dWire));
+  }
+
+  // ── Newari old town (west) + Chandeshwori temple ──
+  add(makeNewariHouse(3), -16, 2.5, 0.3);
+  add(makeNewariHouse(4), -20, 8, -0.2);
+  add(makeNewariHouse(3), -13, 12, 0.5);
+  add(makeNewariHouse(2), -22, -3, 0.1);
+  add(makePagodaTemple(), -18, 8.5, 0.4);          // Chandeshwori-style tiered temple
+  const pf2 = makePrayerFlags(8, 0.7); pf2.position.set(-18, 4.5, 7); pf2.rotation.y = Math.PI / 3; scene.add(pf2);
+
+  // ── hillside terraces (south foreground) ──
+  add(makeTerrace(), -2, 19, Math.PI);
+  add(makeTerrace(), -9, 20, Math.PI);
+  add(makeTerrace(), 6, 20, Math.PI);
+
+  // ── the five quiz stations' props (placed AT their station spots) ──
+  add(makeWaterstation(), -10, 13);                // waterstation
+  const sp = makeSignboard('धुलिखेल', NP.maroon); sp.position.set(2, 1.4, -10); scene.add(sp);  // signpost
+  add(makeNewariHouse(3), -16, 2.5);               // (house station leans on the town house above)
+
+  // ── pine ridges + a few broadleaf trees ──
+  for (let i = 0; i < 26; i++) {
+    const x = rand(-30, 34), z = rand(-22, 22);
+    if (Math.hypot(x - RC.x, z - RC.z) < ROUT + 1.5) continue;  // keep the ring/campus clear
+    if (Math.abs(x) < 4 && z < -6) continue;
+    scene.add(Object.assign(makePine(rand(0.8, 1.5)), {})).position.set(x, 0, z);
+  }
+  for (const [x, z] of [[-26, 14], [8, -14], [-6, -16], [30, -8]]) add(makeTree(rand(1.0, 1.4)), x, z);
+
+  return {
+    update(dt) { for (const u of updaters) u(dt); },
+    spots: {
+      school: new THREE.Vector3(10, 0, 3),
+      house: new THREE.Vector3(-14, 0, 4),
+      waterstation: new THREE.Vector3(-10, 0, 11),
+      terrace: new THREE.Vector3(-2, 0, 17),
+      signpost: new THREE.Vector3(2, 0, -8),
+    },
+  };
+}
+
+
 
 // Painterly sky for scene.background: vertical gradient (deeper up top, paler at
 // the horizon) plus a few soft cloud bands — gives the cel-shaded scenes depth.
 export function makeSkyTexture(base = 0x9fd3cf) {
   const c = document.createElement('canvas'); c.width = 256; c.height = 512;
   const x = c.getContext('2d');
-  // luminous, soft Japanese-anime light-blue / teal — Messenger-style gradient
-  const col = new THREE.Color(base).lerp(new THREE.Color(0x8fd2ec), 0.40);
-  const top = col.clone().lerp(new THREE.Color(0x3a93c8), 0.30);
-  const mid = col.clone().lerp(new THREE.Color(0xffffff), 0.16);
-  const hor = col.clone().lerp(new THREE.Color(0xffffff), 0.64);
+  // Messenger (abeto.co) painterly TEAL sky — anchored to teal so every scene matches;
+  // `base` only tints it slightly. Deeper teal up top, pale teal-white at the horizon.
+  const anchor = new THREE.Color(0x89cff0);                          // bright anime sky blue (Shinkai)
+  const col = anchor.clone().lerp(new THREE.Color(base), 0.10);
+  const top = col.clone().lerp(new THREE.Color(0x4274d9), 0.45);     // deep midday blue up top
+  const mid = col.clone().lerp(new THREE.Color(0xf9f9f9), 0.30);     // light cloud-white haze
+  const hor = col.clone().lerp(new THREE.Color(0xf9f9f9), 0.62);     // pale white-blue horizon
   const g = x.createLinearGradient(0, 0, 0, 512);
   g.addColorStop(0.0, '#' + top.getHexString());
-  g.addColorStop(0.5, '#' + mid.getHexString());
+  g.addColorStop(0.28, '#' + top.clone().lerp(mid, 0.45).getHexString());
+  g.addColorStop(0.55, '#' + mid.getHexString());
+  g.addColorStop(0.80, '#' + mid.clone().lerp(hor, 0.55).getHexString());
   g.addColorStop(1.0, '#' + hor.getHexString());
   x.fillStyle = g; x.fillRect(0, 0, 256, 512);
-  // big soft brushy cloud washes (smooth, low-contrast)
-  for (const [cx, cy, r, a] of [[128, 120, 150, 0.5], [80, 215, 115, 0.4], [185, 320, 165, 0.32], [110, 430, 120, 0.24], [200, 165, 95, 0.36]]) {
-    const rg = x.createRadialGradient(cx, cy, 2, cx, cy, r);
-    rg.addColorStop(0, `rgba(255,255,255,${a})`);
-    rg.addColorStop(0.55, `rgba(255,255,255,${(a * 0.35).toFixed(3)})`);
-    rg.addColorStop(1, 'rgba(255,255,255,0)');
-    x.fillStyle = rg; x.fillRect(0, Math.max(0, cy - r), 256, r * 2);
-  }
+  // soft brushy HORIZONTAL cloud streaks (Ghibli-style), low contrast, slightly warm-white
+  const streak = (cx, cy, w, h, a) => {
+    x.save(); x.translate(cx, cy); x.scale(w, h);
+    const rg = x.createRadialGradient(0, 0, 0.02, 0, 0, 1);
+    rg.addColorStop(0, `rgba(249,249,249,${a})`);
+    rg.addColorStop(0.42, `rgba(255,255,255,${(a * 0.3).toFixed(3)})`);
+    rg.addColorStop(1, 'rgba(255,250,239,0)');
+    x.fillStyle = rg; x.beginPath(); x.arc(0, 0, 1, 0, Math.PI * 2); x.fill();
+    x.restore();
+  };
+  for (const [cx, cy, w, h, a] of [
+    [118, 92, 168, 34, 0.42], [185, 132, 110, 24, 0.32], [66, 178, 140, 30, 0.36],
+    [196, 240, 124, 26, 0.28], [104, 300, 162, 32, 0.26], [58, 360, 104, 22, 0.22], [206, 418, 138, 28, 0.2],
+  ]) streak(cx, cy, w, h, a);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true;
   return t;
@@ -2410,6 +2614,20 @@ export function makeSkyTexture(base = 0x9fd3cf) {
 
 // Painted ground texture: a base colour with soft mottled patches (and optional
 // grass strokes) so large ground planes read as hand-painted, not flat plastic.
+export function makeWaterTexture() {
+  const c = document.createElement('canvas'); c.width = 128; c.height = 128;
+  const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 0, 128);
+  g.addColorStop(0.0, '#cdeeff');   // pale shallow water
+  g.addColorStop(0.45, '#6cc3ee');  // anime cyan
+  g.addColorStop(1.0, '#3b86d8');   // deep midday blue
+  x.fillStyle = g; x.fillRect(0, 0, 128, 128);
+  x.globalAlpha = 0.22; x.fillStyle = '#ffffff';
+  for (let i = 0; i < 6; i++) { x.fillRect(0, 10 + i * 20, 128, 2.5); }
+  x.globalAlpha = 1;
+  const t = new THREE.CanvasTexture(c); t.anisotropy = 4; t.wrapS = t.wrapT = THREE.RepeatWrapping; return t;
+}
+
 export function makeGroundTexture(base = 0x88a05a, { lines = false } = {}) {
   const S = 256;
   const c = document.createElement('canvas'); c.width = c.height = S;
@@ -2438,4 +2656,44 @@ export function makeGroundTexture(base = 0x88a05a, { lines = false } = {}) {
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.needsUpdate = true;
   return t;
+}
+
+/* ── RED PANDA (Bana's kin) ──────────────────────────────────────────────── */
+export function makeRedPanda(scale = 1) {
+  const g = new THREE.Group();
+  const RUST = 0xb5651d, DARK = 0x3a2317, CREAM = 0xf3e7d3, BLACK = 0x1c1714;
+  // body
+  const body = mesh(new THREE.SphereGeometry(0.32, 12, 10), RUST, { flatShading: true });
+  body.scale.set(1.0, 0.82, 1.35); body.position.y = 0.34; g.add(body);
+  // chest cream
+  const chest = mesh(new THREE.SphereGeometry(0.2, 10, 8), DARK, { flatShading: true, noOutline: true });
+  chest.scale.set(0.9, 1.1, 0.7); chest.position.set(0, 0.26, 0.28); g.add(chest);
+  // head
+  const head = mesh(new THREE.SphereGeometry(0.24, 12, 10), RUST, { flatShading: true });
+  head.position.set(0, 0.54, 0.34); g.add(head);
+  // face mask (cream)
+  const face = mesh(new THREE.SphereGeometry(0.2, 10, 8), CREAM, { flatShading: true, noOutline: true });
+  face.scale.set(1, 0.9, 0.6); face.position.set(0, 0.52, 0.5); g.add(face);
+  // cheeks/brows (cream stripes)
+  [-1, 1].forEach((s) => { const br = mesh(new THREE.SphereGeometry(0.07, 8, 6), CREAM, { flatShading: true, noOutline: true }); br.position.set(0.12 * s, 0.62, 0.46); g.add(br); });
+  // ears
+  [-1, 1].forEach((s) => {
+    const ear = mesh(new THREE.ConeGeometry(0.1, 0.16, 8), RUST, { flatShading: true }); ear.position.set(0.16 * s, 0.72, 0.32); g.add(ear);
+    const inner = mesh(new THREE.ConeGeometry(0.05, 0.1, 7), CREAM, { flatShading: true, noOutline: true }); inner.position.set(0.16 * s, 0.72, 0.34); g.add(inner);
+  });
+  // eyes + nose
+  [-1, 1].forEach((s) => { const eye = mesh(new THREE.SphereGeometry(0.035, 8, 6), BLACK, { flatShading: true, noOutline: true }); eye.position.set(0.08 * s, 0.56, 0.54); g.add(eye); });
+  const nose = mesh(new THREE.SphereGeometry(0.04, 8, 6), BLACK, { flatShading: true, noOutline: true }); nose.position.set(0, 0.49, 0.56); g.add(nose);
+  // legs (dark)
+  [[-0.16, 0.22], [0.16, 0.22], [-0.16, -0.22], [0.16, -0.22]].forEach(([x, z]) => { const leg = cyl(0.07, 0.08, 0.22, 7, DARK); leg.position.set(x, 0.11, z); g.add(leg); });
+  // ringed tail (alternating rust / dark), curving up behind
+  const tail = new THREE.Group();
+  for (let i = 0; i < 6; i++) {
+    const seg = mesh(new THREE.SphereGeometry(0.13 - i * 0.012, 9, 7), i % 2 ? DARK : RUST, { flatShading: true });
+    seg.position.set(0, 0.32 + i * 0.07, -0.42 - i * 0.1 + i * i * 0.012); tail.add(seg);
+  }
+  tail.rotation.x = 0.5; g.add(tail);
+  g.scale.setScalar(scale);
+  g.userData.isRedPanda = true;
+  return g;
 }

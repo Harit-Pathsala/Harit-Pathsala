@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
-import { box, cyl, cone, mesh, makeGreenHills, makeTree } from '../game/nepalKit.js';
+import { box, cyl, cone, mesh, makeGreenHills, makeTree, makeSkyTexture } from '../game/nepalKit.js';
 import { audio } from '../game/audio.ts';
 import { BanaFace } from './Bana.jsx';
 import Icon from './Icons.jsx';
@@ -19,7 +19,7 @@ function makeCan() { const g = new THREE.Group(); g.add(cyl(0.16, 0.16, 0.34, 12
 function makeCup() { const g = new THREE.Group(); g.add(cyl(0.2, 0.13, 0.26, 12, 0xfafafa)); return g; }
 const KINDS = [makeBottle, makeBag, makePacket, makeCan, makeCup];
 
-export default function LakeCleanupMission() {
+export default function LakeCleanupMission({ onWin, onMap }) {
   const { lang } = useLang();
   const tt = (en, ne) => (lang === 'ne' ? ne : en);
 
@@ -42,12 +42,8 @@ export default function LakeCleanupMission() {
 
     const W = mount.clientWidth || 760, H = mount.clientHeight || 460;
     const scene = new THREE.Scene();
-    // sky gradient
-    const sc = document.createElement('canvas'); sc.width = 8; sc.height = 256;
-    const sx = sc.getContext('2d'); const sg = sx.createLinearGradient(0, 0, 0, 256);
-    sg.addColorStop(0, '#7ec8ee'); sg.addColorStop(0.6, '#bfe6f5'); sg.addColorStop(1, '#e8f4ef');
-    sx.fillStyle = sg; sx.fillRect(0, 0, 8, 256);
-    const skyTex = new THREE.CanvasTexture(sc); skyTex.colorSpace = THREE.SRGBColorSpace; scene.background = skyTex;
+    const skyTex = makeSkyTexture(0x8fcabf);
+    scene.background = skyTex;
 
     const camera = new THREE.PerspectiveCamera(50, W / H, 0.1, 500);
     camera.position.set(0, 16, 27); camera.lookAt(0, 0.5, -3);
@@ -60,7 +56,7 @@ export default function LakeCleanupMission() {
     const sun = new THREE.DirectionalLight(0xfff3da, 1.2); sun.position.set(-30, 50, 20); scene.add(sun);
 
     // lake water
-    const lake = mesh(new THREE.PlaneGeometry(120, 90, 1, 1), 0x2f8fc0, { roughness: 0.35, metalness: 0.15 });
+    const lake = mesh(new THREE.PlaneGeometry(120, 90, 1, 1), 0x4eaeac, { roughness: 0.35, metalness: 0.15 });
     lake.rotation.x = -Math.PI / 2; lake.position.y = 0; scene.add(lake);
 
     // green shore hills + distant snow peaks (Machhapuchhre / Annapurna)
@@ -122,7 +118,7 @@ export default function LakeCleanupMission() {
 
     let got = 0, sunk = 0, t = TIME, acc = 0, spawnT = 0, vx = 0, vz = 0;
     let last = performance.now();
-    const finish = (win, rating, reason) => { if (ended) return; ended = true; if (win) useGameStore.getState().addEcoPoints(rating === 'pristine' ? 30 : rating === 'clean' ? 22 : 16); setResult({ win, rating, reason }); setPhase('done'); };
+    const finish = (win, rating, reason) => { if (ended) return; ended = true; if (win) onWin && onWin(); if (win) useGameStore.getState().addEcoPoints(rating === 'pristine' ? 30 : rating === 'clean' ? 22 : 16); setResult({ win, rating, reason }); setPhase('done'); };
 
     const onResize = () => { const w = mount.clientWidth, h = mount.clientHeight; renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix(); };
     const ro = new ResizeObserver(onResize); ro.observe(mount);
@@ -248,7 +244,7 @@ export default function LakeCleanupMission() {
       )}
 
       {phase === 'done' && (
-        <div className="card center" style={{ maxWidth: 560, margin: '0 auto' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(10,18,12,.42)', backdropFilter: 'blur(7px)' }}><div className="card center" style={{ maxWidth: 470, margin: 0, maxHeight: '88vh', overflowY: 'auto' }}>
           {result?.win ? (
             <>
               <div style={{ color: 'var(--primary)', display: 'grid', placeItems: 'center' }}><Icon name={result.rating === 'pristine' ? 'sparkle' : result.rating === 'clean' ? 'droplet' : 'boat'} size={42} /></div>
@@ -264,9 +260,16 @@ export default function LakeCleanupMission() {
             </>
           )}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 10 }}>
-            <button className="btn" onClick={restart}>{tt('Try again', 'फेरि')}</button>
+            {result?.win ? (
+            <button className="btn" onClick={onMap}>{tt('Continue', 'जारी राख्नुहोस्')}</button>
+          ) : (
+            <>
+              <button className="btn" onClick={restart}>{tt('Try again', 'फेरि')}</button>
+              <button className="btn" onClick={onMap} style={{ background: '#eef3ee', color: '#1c3326' }}>{tt('Back to map', 'नक्सामा फर्कनुहोस्')}</button>
+            </>
+          )}
           </div>
-        </div>
+        </div></div>
       )}
 
       <div className="muted center" style={{ fontWeight: 700, marginTop: 12 }}>

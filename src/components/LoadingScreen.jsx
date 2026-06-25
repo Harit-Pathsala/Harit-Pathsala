@@ -21,7 +21,7 @@ export default function LoadingScreen() {
         </div>
         <div style={{ marginTop: 30, animation: 'hp-float 2.6s ease-in-out infinite', display: 'inline-grid', placeItems: 'center', width: 168, height: 168, borderRadius: '50%', background: 'rgba(255,255,255,.6)', boxShadow: '0 8px 26px rgba(120,90,40,.18)' }}><BanaFace size={122} /></div>
         <div style={{ width: 120, height: 15, margin: '4px auto 0', borderRadius: '50%', background: '#2b3a24', animation: 'hp-shadow 2.6s ease-in-out infinite' }} />
-        <div style={{ marginTop: 20, fontFamily: "'Patrick Hand', cursive", fontSize: '1.15rem', color: '#5d7a4f', letterSpacing: '.02em' }}>हरित पाठशाला · Harit Pathsala</div>
+        <div style={{ marginTop: 20, fontFamily: "'Patrick Hand', cursive", fontSize: '1.4rem', color: '#5d7a4f', letterSpacing: '.02em' }}>हरित पाठशाला · Harit Pathsala</div>
       </div>
     </div>
   );

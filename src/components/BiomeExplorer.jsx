@@ -1,12 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import {
-  buildKathmanduValley, buildLumbiniGarden, buildBiome, makeStudent, animateStudent, makeTree, makeWeather, makeSkyTexture, makeGroundTexture, makeCrowd,
+  buildKathmanduValley, buildLumbiniGarden, buildDhulikhel, buildBiome, makeStudent, animateStudent, makeTree, makeWeather, makeSkyTexture, makeGroundTexture, makeCrowd,
 } from '../game/nepalKit.js';
 import { getBiome } from '../game/biomes.js';
 import { EXPLORER_LEVELS, completeLevel } from '../logic.js';
 import { useGameStore } from '../state/gameStore.ts';
 import { audio } from '../game/audio.ts';
+import { sfx } from '../game/sfx.js';
 import gsap from 'gsap';
 import { BanaFace } from './Bana.jsx';
 import Icon from './Icons.jsx';
@@ -33,7 +34,7 @@ const upcomingFestival = (lang) => {
   return lang === 'ne' ? f.ne : f.en;
 };
 
-export default function BiomeExplorer({ initialLevel = 3 }) {
+export default function BiomeExplorer({ initialLevel = 3, onWin, onMap }) {
   const { lang } = useLang();
   const L = (o, k) => (lang === 'ne' && o[`${k}_ne`]) ? o[`${k}_ne`] : o[k];
 
@@ -125,19 +126,24 @@ export default function BiomeExplorer({ initialLevel = 3 }) {
     scene.add(ground);
 
     // the living world: hand-tuned Kathmandu for L3, generic engine elsewhere
-    const city = levelId === 3 ? buildKathmanduValley(scene) : levelId === 8 ? buildLumbiniGarden(scene) : buildBiome(scene, biome);
+    const city = levelId === 3 ? buildKathmanduValley(scene) : levelId === 8 ? buildLumbiniGarden(scene) : levelId === 6 ? buildDhulikhel(scene) : buildBiome(scene, biome);
     const cars = city.cars || [];   // for GTA-style player↔vehicle collisions
     const boat = city.boat || null;                 // Lumbini: rideable canal boat
     const water = city.water || null;               // canal bounds for boating
     const weather = makeWeather(biome.weather);
     scene.add(weather);
-    const crowd = makeCrowd(levelId === 3 ? 16 : 9, 18);
+    const colliders = [];                         // buildings / large props the player + crowd avoid
+    const pavedMeshes = [], walkables = [];        // roads+paving (no-plant) and raised surfaces (stand-on)
+    const _downRay = new THREE.Raycaster(); const _DOWN = new THREE.Vector3(0, -1, 0); const _rayO = new THREE.Vector3();
+    const surfaceYAt = (x, z) => { _rayO.set(x, 8, z); _downRay.set(_rayO, _DOWN); const h = _downRay.intersectObjects(walkables, false); return h.length ? h[0].point.y : 0; };
+    const crowd = makeCrowd(levelId === 3 ? 16 : 9, 18, colliders);
     scene.add(crowd);
     const bellTimer = levelId === 3 ? setInterval(() => audio.bell(), 15000) : null;
 
     // student
     const student = makeStudent(); student.scale.setScalar(0.72);
-    student.position.set(6, 0, levelId === 8 ? 3 : 26);   // start on grass (Lumbini: by the garden & canal)
+    student.position.set(levelId === 6 ? 4 : 6, 0, levelId === 8 ? 3 : levelId === 6 ? 22 : 26);   // start on grass (Lumbini: by the canal; Dhulikhel: south, facing the campus/himalayas to the north)
+    student.rotation.y = levelId === 6 ? Math.PI : 0;
     scene.add(student);
     const studentRoot = new THREE.Group();   // wrapper for facing
     // (we rotate the student group directly; keep simple)
@@ -184,7 +190,7 @@ export default function BiomeExplorer({ initialLevel = 3 }) {
     window.addEventListener('keyup', ku);
 
     // drag to orbit the camera yaw
-    let camYaw = 0, dragging = false, lastX = 0;
+    let camYaw = levelId === 6 ? Math.PI : 0, dragging = false, lastX = 0;
     const dom = renderer.domElement;
     const pd = (e) => { audio.init(); dragging = true; lastX = e.clientX; };
     const pm = (e) => { if (dragging) { camYaw -= (e.clientX - lastX) * 0.0022; lastX = e.clientX; } };
@@ -208,11 +214,22 @@ export default function BiomeExplorer({ initialLevel = 3 }) {
       lightTarget = THREE.MathUtils.lerp(biome.sun.intensity * 0.6, biome.sun.intensity + 0.12, envScore);
     };
     applyEnv();
+    function plantOK(x, z) {
+      for (const c of colliders) { if (Math.hypot(x - c.x, z - c.z) < c.r + 0.8) return false; }
+      _rayO.set(x, 8, z); _downRay.set(_rayO, _DOWN);
+      return _downRay.intersectObjects(pavedMeshes, false).length === 0;   // reject roads / footpaths / plaza
+    }
     function spawnSapling(n) {
       for (let i = 0; i < n; i++) {
+        let px = student.position.x, pz = student.position.z, ok = false;
+        for (let k = 0; k < 16; k++) {
+          const a = Math.random() * Math.PI * 2, r = 1.8 + Math.random() * 2.8;
+          px = student.position.x + Math.cos(a) * r; pz = student.position.z + Math.sin(a) * r;
+          if (plantOK(px, pz)) { ok = true; break; }
+        }
+        if (!ok) continue;                       // no clear grass nearby → skip rather than grow on the road
         const tr = makeTree(0.9 + Math.random() * 0.45);
-        const a = Math.random() * Math.PI * 2, r = 1.0 + Math.random() * 1.4;
-        tr.position.set(student.position.x + Math.cos(a) * r, 0, student.position.z + Math.sin(a) * r);
+        tr.position.set(px, 0, pz);
         tr.scale.setScalar(0.001);
         scene.add(tr);
         gsap.to(tr.scale, { x: 1, y: 1, z: 1, duration: 0.7, ease: 'back.out(2)', delay: i * 0.1 });
@@ -287,12 +304,16 @@ export default function BiomeExplorer({ initialLevel = 3 }) {
     let raf = 0;
     let health = 100, invuln = 0;   // GTA-style: knocked by traffic → lose health
     let ambTimer = 1.4;             // periodically refresh the adaptive ambient bed
-    // ── solid colliders: the player can't pass through buildings / large props ──
-    const colliders = [];
+    // ── solid colliders + paving registry (one traversal) ──
     { const _wp = new THREE.Vector3(); scene.updateMatrixWorld(true);
-      scene.traverse((o) => { if (o === student) return; const r = o.userData && o.userData.radius; if (r && r > 0.7 && !o.userData.wheels) { o.getWorldPosition(_wp); colliders.push({ x: _wp.x, z: _wp.z, r: r * 0.82 }); } }); }
-    let vy = 0, grounded = true, prevSpace = false, jumpY = 0, heading = 0; const PR = 0.5;   // jump + collision
-    let boating = false, boatHeading = 0, prevBoard = false, boardReq = false;                 // Lumbini boating
+      scene.traverse((o) => {
+        if (o === student) return;
+        const r = o.userData && o.userData.radius; if (r && r > 0.7 && !o.userData.wheels) { o.getWorldPosition(_wp); colliders.push({ x: _wp.x, z: _wp.z, r: r * 0.82 }); }
+        if (o.isMesh && o.userData.paved) pavedMeshes.push(o);
+        if (o.isMesh && o.userData.walkable) walkables.push(o);
+      }); }
+    let vy = 0, grounded = true, prevSpace = false, jumpY = 0, heading = levelId === 6 ? Math.PI : 0; const PR = 0.5;   // jump + collision
+    let boating = false, boatHeading = 0, boatSpeed = 0, prevBoard = false, boardReq = false;   // Lumbini boating
     api.current.boardToggle = () => { boardReq = true; };
     api.current.jump = () => { if (grounded && !paused) { vy = 7.4; grounded = false; } };
     const camOffset = new THREE.Vector3();
@@ -319,11 +340,11 @@ export default function BiomeExplorer({ initialLevel = 3 }) {
         if (((boardDown && !prevBoard) || boardReq) && !paused) {
           if (!boating) {
             const bdx = student.position.x - boat.position.x, bdz = student.position.z - boat.position.z;
-            if (Math.hypot(bdx, bdz) < 3.4) { boating = true; student.visible = false; boatHeading = boat.rotation.y; setOnBoat(true); }
+            if (Math.hypot(bdx, bdz) < 6.0) { boating = true; student.visible = false; boatHeading = boat.rotation.y; if (boat.userData.beacon) boat.userData.beacon.visible = false; setOnBoat(true); }
           } else {
-            boating = false; student.visible = true;
+            boating = false; student.visible = true; boatSpeed = 0;
             student.position.set(THREE.MathUtils.clamp(boat.position.x + water.maxX + 2, -46, 46), 0, boat.position.z);
-            heading = student.rotation.y; setOnBoat(false);
+            heading = student.rotation.y; if (boat.userData.beacon) boat.userData.beacon.visible = true; setOnBoat(false);
           }
         }
         prevBoard = boardDown; boardReq = false;
@@ -332,13 +353,18 @@ export default function BiomeExplorer({ initialLevel = 3 }) {
       if (boating && boat && water) {
         // drive the boat: steer + paddle, clamped to the canal water
         if (!paused) {
-          if (str !== 0) boatHeading -= str * 1.5 * dt;
-          if (fwd !== 0) { boat.position.x += Math.sin(boatHeading) * fwd * 4.4 * dt; boat.position.z += Math.cos(boatHeading) * fwd * 4.4 * dt; moving = true; }
+          if (str !== 0) boatHeading -= str * 1.4 * dt;
+          const target = fwd * 5.2;
+          boatSpeed += (target - boatSpeed) * Math.min(1, dt * 2.4);   // glide like a boat
+          boat.position.x += Math.sin(boatHeading) * boatSpeed * dt;
+          boat.position.z += Math.cos(boatHeading) * boatSpeed * dt;
           boat.position.x = THREE.MathUtils.clamp(boat.position.x, water.minX, water.maxX);
           boat.position.z = THREE.MathUtils.clamp(boat.position.z, water.minZ, water.maxZ);
           boat.rotation.y = boatHeading;
           boat.position.y = water.y + Math.sin(t * 2.0) * 0.05;
-          boat.rotation.z = Math.sin(t * 1.3) * 0.03;
+          boat.rotation.z = Math.sin(t * 1.3) * 0.03 - boatSpeed * 0.02;
+          if (boat.userData.wheelMesh) boat.userData.wheelMesh.rotation.x += boatSpeed * dt * 1.2;
+          if (Math.abs(boatSpeed) > 0.06) moving = true;
         }
       } else {
         if (!paused && camModeRef.current === 1) {
@@ -362,8 +388,11 @@ export default function BiomeExplorer({ initialLevel = 3 }) {
         prevSpace = spaceDown;
         if (!grounded) { vy -= 20 * dt; jumpY += vy * dt; if (jumpY <= 0) { jumpY = 0; vy = 0; grounded = true; } }
         animateStudent(student, moving, t);
-        student.position.y += jumpY;
+        student.position.y = surfaceYAt(student.position.x, student.position.z) + jumpY;
       }
+
+      // bob the boat's "ride me" arrow when parked
+      if (boat && boat.userData.beaconArrow && (!boat.userData.beacon || boat.userData.beacon.visible)) boat.userData.beaconArrow.position.y = 2.9 + Math.sin(t * 3) * 0.25;
 
       // camera: boat-follow while boating, else photo/third-person
       if (boating && boat) {
@@ -514,8 +543,10 @@ export default function BiomeExplorer({ initialLevel = 3 }) {
     if (decisions.current.length >= level.events.length) {
       const result = completeLevel(decisions.current);
       setSummary(result);
+      if (result.passed) sfx.win(); else sfx.lose();
       // commit to the persistent valley: a sapling per correct call + CO2 saved
       recordResult(levelId, result.scorePercent, result.passed);
+      if (result.passed && onWin) onWin();
       addRestoration(result.correct, Math.max(0, -result.co2Delta));
     } else {
       api.current.pause && api.current.pause(false);
@@ -638,18 +669,27 @@ export default function BiomeExplorer({ initialLevel = 3 }) {
         ) : null}
 
         {summary && !photo ? (
-          <div className="event-popup fade-in" style={{ textAlign: 'center' }}>
+          <div style={{ position: 'absolute', inset: 0, zIndex: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(10,18,12,.4)', backdropFilter: 'blur(6px)' }}><div className="event-popup fade-in" style={{ textAlign: 'center' }}>
             <div style={{ fontFamily: 'Baloo 2', fontSize: '2rem', color: summary.passed ? 'var(--primary)' : 'var(--danger)' }}>{summary.scorePercent}%</div>
             <div style={{ fontWeight: 800 }}>{summary.correct}/{summary.total} {lang === 'ne' ? 'सही' : 'right'} · {lang === 'ne' ? 'नेट' : 'net'} {summary.co2Delta <= 0 ? '' : '+'}{summary.co2Delta} kg CO₂</div>
             <div className="bana" style={{ margin: '12px 0' }}>
               <BanaFace size={44} />
               <div className="bana-bubble">{summary.passed ? (lang === 'ne' ? `राम्रो! तपाईंले ${L(level, 'name')} लाई सास फेर्न मद्दत गर्नुभयो।` : `Ramro cha! You helped ${L(level, 'name')} breathe easier.`) : (lang === 'ne' ? 'फेरि प्रयास गरौं — हरियो छनोट खोज्नुहोस्।' : "Let's try again — look for the greener choice.")}</div>
             </div>
-            <div className="row" style={{ justifyContent: 'center', gap: 8 }}>
-              <button className="btn" onClick={enterPhoto}><Icon name="expand" size={18} /> {lang === 'ne' ? 'निहाल्नुहोस्' : 'Appreciate'}</button>
-              <button className="btn ghost" onClick={replay}><Icon name="refresh" size={18} /> {lang === 'ne' ? 'फेरि खेल्ने' : 'Play again'}</button>
+            <div className="row" style={{ justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
+              {summary.passed ? (
+                <>
+                  <button className="btn" onClick={onMap}>{lang === 'ne' ? 'जारी राख्नुहोस्' : 'Continue'}</button>
+                  <button className="btn ghost" onClick={enterPhoto}><Icon name="expand" size={18} /> {lang === 'ne' ? 'निहाल्नुहोस्' : 'Appreciate'}</button>
+                </>
+              ) : (
+                <>
+                  <button className="btn" onClick={replay}><Icon name="refresh" size={18} /> {lang === 'ne' ? 'फेरि खेल्ने' : 'Play again'}</button>
+                  <button className="btn ghost" onClick={onMap}>{lang === 'ne' ? 'नक्सामा फर्कनुहोस्' : 'Back to map'}</button>
+                </>
+              )}
             </div>
-          </div>
+          </div></div>
         ) : null}
 
         {photo ? (

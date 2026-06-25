@@ -21,7 +21,7 @@ const LANG_RULE = {
   en: 'Reply in clear, simple English. ',
   ne: 'जवाफ सधैं सरल नेपाली (देवनागरी लिपि) मा मात्र दिनुहोस्। अङ्ग्रेजी प्रयोग नगर्नुहोस्। ',
 };
-const CAT_LABEL = { transport: { en: 'transport', ne: 'यातायात' }, electricity_home: { en: 'home electricity', ne: 'घरको बिजुली' }, cooking: { en: 'cooking fuel', ne: 'खाना पकाउने इन्धन' }, food: { en: 'food', ne: 'खाना' }, waste: { en: 'waste', ne: 'फोहोर' }, water: { en: 'water', ne: 'पानी' }, electricity_school: { en: 'school electricity', ne: 'स्कुलको बिजुली' } };
+const CAT_LABEL = { transport: { en: 'transport', ne: 'यातायात' }, electricity: { en: 'home electricity', ne: 'घरको बिजुली' }, cooking: { en: 'cooking gas (LPG)', ne: 'खाना पकाउने ग्यास' }, waste: { en: 'waste', ne: 'फोहोर' }, stationery: { en: 'stationery', ne: 'स्टेसनरी' } };
 
 function calcContext(lang) {
   const r = getLastResult();
@@ -43,12 +43,23 @@ async function fetchWithTimeout(url, opts, ms) {
 
 export async function pickChatModel() {
   const res = await fetchWithTimeout(OLLAMA_URL + '/api/tags', { method: 'GET' }, 3500);
-  if (!res || !res.ok) { console.warn('[Bana RAG] Cannot reach Ollama at ' + OLLAMA_URL + ' (running? OLLAMA_ORIGINS set?).'); return null; }
+  if (!res || !res.ok) { console.warn('[Bana RAG] Cannot reach Ollama at ' + OLLAMA_URL + ' (running? start it, and set OLLAMA_ORIGINS=* so the browser can call it).'); return null; }
   let data; try { data = await res.json(); } catch (_) { return null; }
   const names = (data.models || []).map((m) => m.name || '');
-  if (!names.length) { console.warn('[Bana RAG] No models. Run: ollama pull llama3.2'); return null; }
-  const chat = names.find((n) => n.startsWith('bana')) || names.find((n) => n.startsWith('llama3.2')) || names.find((n) => n.startsWith('llama')) || names.find((n) => !n.includes('embed')) || names[0];
-  console.info('[Bana RAG] chat model: ' + chat + ' | embeddings ' + (names.some((n) => n.includes('embed')) ? 'available' : 'NOT installed (keyword fallback)'));
+  if (!names.length) { console.warn('[Bana RAG] No models. Run: ollama pull qwen2.5:0.5b'); return null; }
+  // explicit override wins: set window.HARIT_CHAT = 'qwen2.5:0.5b' to force a model
+  const forced = (typeof window !== 'undefined' && window.HARIT_CHAT) || '';
+  if (forced && names.some((n) => n === forced || n.startsWith(forced))) {
+    console.info('[Bana RAG] chat model (forced): ' + forced);
+    return names.find((n) => n === forced) || names.find((n) => n.startsWith(forced));
+  }
+  const chat = names.find((n) => n.startsWith('bana'))
+    || names.find((n) => n.startsWith('qwen'))
+    || names.find((n) => n.startsWith('llama3.2'))
+    || names.find((n) => n.startsWith('llama'))
+    || names.find((n) => !n.includes('embed'))
+    || names[0];
+  console.info('[Bana RAG] chat model: ' + chat + ' | embeddings ' + (names.some((n) => n.includes('embed')) ? 'available' : 'NOT installed (keyword retrieval — works fine)'));
   return chat;
 }
 
@@ -172,21 +183,21 @@ async function localPlan({ answers, focusKey, lang, onToken }) {
   return { text, sources: chunks, tasks };
 }
 
-export async function answerQuestion({ model, query, history = [], lang = 'en', onToken }) {
+export async function answerQuestion({ model, query, history = [], lang = 'en', onToken, userContext = '' }) {
   if (!model) return localAnswer({ query, history, lang, onToken });
   const chunks = await retrieve(retrievalQuery(query, history), lang, 4);
   const ctx = calcContext(lang);
-  const sys = PERSONA[lang] + LANG_RULE[lang]
+  const sys = PERSONA[lang] + (userContext ? '\n' + userContext + '\n' : '') + LANG_RULE[lang]
     + (lang === 'ne'
-      ? `तलको ${NOTEBOOK.ne} का तथ्यमा मात्र आधारित भएर ९० शब्दभित्र जवाफ दिनुहोस्। नोटबुकमा नभए छोटोमा भन्नुहोस् र सुरक्षित सामान्य नेपाल सल्लाह दिनुहोस्। यो हप्ता गर्न सकिने एउटा ठोस सुझावले अन्त्य गर्नुहोस्। अघिल्लो कुराकानीलाई ध्यानमा राख्नुहोस्।`
-      : `Answer using ONLY the facts in the ${NOTEBOOK.en} below, under 90 words. If it is not covered, say so briefly and give safe general Nepal advice. End with one specific tip for this week. Use the earlier conversation for context.`);
+      ? `तलको ${NOTEBOOK.ne} का तथ्यमा मात्र आधारित भएर ९० शब्दभित्र जवाफ दिनुहोस्। यदि प्रश्न कार्बन फुटप्रिन्ट, जलवायु वा वातावरणसँग सम्बन्धित छैन भने नम्र भएर भन्नुहोस् कि म यी विषयमा मात्र सहायता गर्न सक्छु। नोटबुकमा नभएको कुरा आफैं बनाएर नभन्नुहोस् — थाहा नभए "मलाई पक्का थाहा छैन" भन्नुहोस् र सुरक्षित सामान्य नेपाल सल्लाह दिनुहोस्। यो हप्ता गर्न सकिने एउटा ठोस सुझावले अन्त्य गर्नुहोस्। अघिल्लो कुराकानीलाई ध्यानमा राख्नुहोस्।`
+      : `Answer using ONLY the facts in the ${NOTEBOOK.en} below, under 90 words. If the question is NOT about carbon footprint, climate or the environment, politely say you can only help with those topics. Never invent facts that are not in the notebook — if you do not know, say "I'm not sure" and give safe general Nepal advice. End with one specific tip for this week. Use the earlier conversation for context.`);
   const userMsg = `${NOTEBOOK[lang]}:\n${contextBlock(chunks, lang)}\n${ctx ? '\n' + ctx + '\n' : ''}\n${lang === 'ne' ? 'प्रश्न' : 'Question'}: ${query}`;
   const messages = [{ role: 'system', content: sys }, ...history.slice(-8), { role: 'user', content: userMsg }];
   const text = await streamChat({ model, messages, onToken });
   return { text, sources: chunks };
 }
 
-export async function makePlan({ model, answers, modifier, focusKey, history = [], lang = 'en', onToken }) {
+export async function makePlan({ model, answers, modifier, focusKey, history = [], lang = 'en', onToken, userContext = '' }) {
   if (!model) return localPlan({ answers, focusKey, lang, onToken });
   const ctx = calcContext(lang);
   const rq = `${answers.focus || ''} ${answers.detail || ''} ${answers.area || ''} reduce carbon footprint plan Nepal`;
@@ -194,7 +205,7 @@ export async function makePlan({ model, answers, modifier, focusKey, history = [
   const profile = lang === 'ne'
     ? `विद्यार्थी बस्ने ठाउँ: ${answers.area}. पहिले सुधार्ने: ${answers.focus}.${answers.detail ? ' विवरण: ' + answers.detail + '.' : ''}${modifier ? ' विशेष अनुरोध: ' + modifier + '.' : ''}`
     : `Lives in: ${answers.area}. Focus first: ${answers.focus}.${answers.detail ? ' Detail: ' + answers.detail + '.' : ''}${modifier ? ' Special request: ' + modifier + '.' : ''}`;
-  const sys = PERSONA[lang] + LANG_RULE[lang]
+  const sys = PERSONA[lang] + (userContext ? '\n' + userContext + '\n' : '') + LANG_RULE[lang]
     + (lang === 'ne'
       ? `तलको नोटबुकका तथ्य मात्र प्रयोग गरी यो विद्यार्थीका लागि नेपाल-केन्द्रित कार्ययोजना बनाउनुहोस्। ढाँचा: एक न्यानो वाक्य, त्यसपछि ३-४ नम्बरित कदम (ठाउँ, फोकस र विवरण अनुसार), प्रत्येकमा करिब कति मद्दत गर्छ। १७० शब्दभित्र राख्नुहोस् र उत्साहजनक वाक्यले अन्त्य गर्नुहोस्।`
       : `Using ONLY the notebook facts, create a Nepal-specific action plan for this student. Format: one warm sentence, then 3-4 numbered steps tailored to their area, focus and detail, each with roughly how much it helps. Keep under 170 words and end with encouragement.`);
@@ -223,3 +234,22 @@ export const TOPIC_TO_FOCUS = {
   cooking: 'cooking', fuel: 'cooking', energy: 'cooking', electricity: 'cooking', solar: 'cooking', इन्धन: 'cooking', ऊर्जा: 'cooking', बिजुली: 'cooking', सौर्य: 'cooking',
   food: 'food', खाना: 'food', waste: 'waste', plastic: 'waste', फोहोर: 'waste', प्लास्टिक: 'waste',
 };
+
+// ── Conversational guards: greet by name, answer "who are you", and refuse
+//    anything off-topic so Bana never hallucinates outside its notebook. ────────
+export function isGreeting(text) {
+  const t = text.trim().toLowerCase().replace(/[!.?,]+$/, '');
+  if (t.split(/\s+/).length > 4) return false;
+  return /^(hi|hello|hey+|yo|sup|hiya|hii+|namaste|namaskar|good\s*(morning|afternoon|evening|day)|ke\s*cha|k\s*cha|kasto\s*cha|kasto|hajur)\b/i.test(t)
+    || /^(नमस्ते|नमस्कार|हेलो|ह्यालो|हाई|के\s*छ|कस्तो\s*छ|कस्तो|हजुर|शुभ\s*(प्रभात|दिन|साँझ))/.test(text.trim());
+}
+export function isIdentity(text) {
+  return /\b(who\s*(are|r)\s*(you|u)|what\s*are\s*you|what'?s?\s*your\s*name|your\s*name|tell\s*me\s*about\s*your\s*self|about\s*yourself|what\s*can\s*you\s*do|are\s*you\s*(a\s*)?(bot|ai|robot|human|panda))\b/i.test(text)
+    || /(तिमी\s*को|तपाईं\s*को|को\s*हौ|को\s*हुनुहुन्छ|तिम्रो\s*नाम|तपाईंको\s*नाम|आफ्नो\s*बारेमा|के\s*गर्न\s*सक्न?\s*हुन्छ|के\s*हौ)/.test(text);
+}
+// broad on-topic vocabulary (carbon footprint / climate / environment, EN + NE)
+const TOPIC_WORDS = /(carbon|footprint|co2|co₂|climate|emission|warming|greenhouse|energy|electricity|power|solar|hydro|grid|kwh|unit|transport|travel|commut|bus|car|bike|bicycle|cycle|walk|vehicle|petrol|diesel|fuel|cooking|cook|lpg|cylinder|gas|firewood|wood|induction|stove|biogas|waste|plastic|compost|recycl|garbage|trash|litter|rubbish|water|rain|tree|forest|plant|pollut|smog|soot|glacier|flood|monsoon|landslide|green|eco|environment|nature|weather|season|nepal|school|reduce|save|saving|reuse|sustainab|stationery|notebook|paper|score|tip|advice|plan)/i;
+const TOPIC_WORDS_NE = /(कार्बन|फुटप्रिन्ट|जलवायु|उत्सर्जन|ऊर्जा|बिजुली|विद्युत|सौर्य|यातायात|यात्रा|बस|कार|साइकल|हिँड|गाडी|इन्धन|पेट्रोल|डिजेल|ग्यास|सिलिन्डर|दाउरा|इन्डक्सन|चुलो|बायोग्यास|फोहोर|प्लास्टिक|कम्पोस्ट|पुनःचक्रण|पुनः\s*प्रयोग|पानी|वर्षा|रूख|वृक्ष|वन|जंगल|प्रदूषण|हिमाल|बाढी|मनसुन|पहिरो|हरित|वातावरण|प्रकृति|मौसम|नेपाल|विद्यालय|घटाउ|बचाउ|स्टेसनरी|कापी|कागज|स्कोर|सुझाव|योजना)/;
+export function isOnTopic(text) {
+  return TOPIC_WORDS.test(text) || TOPIC_WORDS_NE.test(text) || isPlanIntent(text) || isAmbiguous(text);
+}

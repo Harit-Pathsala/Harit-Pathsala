@@ -9,14 +9,14 @@ import Icon from './Icons.jsx';
 import { useGameActiveRef } from '../game/gameGate.js';
 import { useLang } from '../i18n.jsx';
 
-const TIME = 60, FLOOD = 1.0, RISE = 0.030, DRAIN_BASE = 0.011, N_DRAINS = 6;
+const TIME = 45, FLOOD = 1.0, RISE = 0.020, DRAIN_BASE = 0.018, N_DRAINS = 6;
 const DRAIN_SPOTS = [[-7, 4], [0, 6], [7, 4], [-8, -3], [1, -4], [8, -2]];
 
-export default function FloodWatchMission() {
+export default function FloodWatchMission({ onWin, onMap }) {
   const { lang } = useLang();
   const tt = (en, ne) => (lang === 'ne' ? ne : en);
   const [phase, setPhase] = useState('play');
-  const [hud, setHud] = useState({ level: 0.22, clogs: 0, time: TIME });
+  const [hud, setHud] = useState({ level: 0.18, clogs: 0, time: TIME });
   const [result, setResult] = useState(null);
   const mountRef = useRef(null);
   const stageRef = useRef(null);
@@ -49,7 +49,7 @@ export default function FloodWatchMission() {
     [[-14, 0], [14, 2], [-3, 11], [5, -11]].forEach(([x, z]) => { const p = makePalm(1.1); p.position.set(x, 0, z); scene.add(p); });
 
     // rising flood water
-    const water = mesh(new THREE.PlaneGeometry(120, 120), 0x4a6b8a, { transparent: true, opacity: 0.82, roughness: 0.4, metalness: 0.1 });
+    const water = mesh(new THREE.PlaneGeometry(120, 120), 0x52a09e, { transparent: true, opacity: 0.82, roughness: 0.4, metalness: 0.1 });
     water.rotation.x = -Math.PI / 2; scene.add(water);
     const waterY = (lvl) => -0.6 + lvl * 2.2;
 
@@ -71,9 +71,9 @@ export default function FloodWatchMission() {
     });
     const rain = makeWeather('monsoon'); scene.add(rain);
 
-    let level = 0.22, t = TIME, acc = 0, clogT = 1.5;
+    let level = 0.18, t = TIME, acc = 0, clogT = 2.2;
     let last = performance.now();
-    const finish = (win, reason) => { if (ended) return; ended = true; if (win) useGameStore.getState().addEcoPoints(25); setResult({ win, reason }); setPhase('done'); };
+    const finish = (win, reason) => { if (ended) return; ended = true; if (win) onWin && onWin(); if (win) useGameStore.getState().addEcoPoints(25); setResult({ win, reason }); setPhase('done'); };
     const ray = new THREE.Raycaster(); const ndc = new THREE.Vector2();
     function onDown(e) {
       const r = renderer.domElement.getBoundingClientRect();
@@ -92,7 +92,7 @@ export default function FloodWatchMission() {
       let dt = (now - last) / 1000; last = now; if (dt > 0.05) dt = 0.05; if (!activeRef.current) dt = 0;
       t -= dt; clogT -= dt;
       // clog a random clear drain now and then (a bit faster as the storm builds)
-      const interval = 2.6 - (1 - t / TIME) * 1.3;
+      const interval = 3.2 - (1 - t / TIME) * 1.0;
       if (clogT <= 0) { clogT = interval; const clear = drains.filter((d) => !d.clogged); if (clear.length) { const d = clear[Math.floor(Math.random() * clear.length)]; d.clogged = true; d.debris.visible = true; } }
       const clogged = drains.filter((d) => d.clogged).length;
       level += (clogged * RISE - DRAIN_BASE) * dt;
@@ -158,7 +158,7 @@ export default function FloodWatchMission() {
       )}
 
       {phase === 'done' && (
-        <div className="card center" style={{ maxWidth: 560, margin: '0 auto' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16, background: 'rgba(10,18,12,.42)', backdropFilter: 'blur(7px)' }}><div className="card center" style={{ maxWidth: 470, margin: 0, maxHeight: '88vh', overflowY: 'auto' }}>
           {result?.win ? (
             <>
               <div style={{ color: 'var(--sun)', display: 'grid', placeItems: 'center' }}><Icon name="sun" size={42} /></div>
@@ -173,13 +173,20 @@ export default function FloodWatchMission() {
             </>
           )}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 10 }}>
-            <button className="btn" onClick={restart}>{tt('Try again', 'फेरि')}</button>
+            {result?.win ? (
+            <button className="btn" onClick={onMap}>{tt('Continue', 'जारी राख्नुहोस्')}</button>
+          ) : (
+            <>
+              <button className="btn" onClick={restart}>{tt('Try again', 'फेरि')}</button>
+              <button className="btn" onClick={onMap} style={{ background: '#eef3ee', color: '#1c3326' }}>{tt('Back to map', 'नक्सामा फर्कनुहोस्')}</button>
+            </>
+          )}
           </div>
-        </div>
+        </div></div>
       )}
 
       <div className="muted center" style={{ fontWeight: 700, marginTop: 12 }}>
-        {tt('Tap drains to unblock them · keep the water below the red line for 60 seconds.', 'नाली थिचेर खोल्नुहोस् · ६० सेकेन्ड पानी रातो रेखामुनि राख्नुहोस्।')}
+        {tt('Tap drains to unblock them · keep the water below the red line for 45 seconds.', 'नाली थिचेर खोल्नुहोस् · ४५ सेकेन्ड पानी रातो रेखामुनि राख्नुहोस्।')}
       </div>
     </div>
   );

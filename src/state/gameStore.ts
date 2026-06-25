@@ -24,7 +24,13 @@ interface GameState extends SaveState {
   setTreeGoal: (n: number) => void;
   buildEco: (kind: 'bins' | 'treatment' | 'solar' | 'transit', cost: number) => boolean;
   fixProblem: (id: string, cost: number) => boolean;   // spend ecopoints to fix a world problem
+  // world-healing journey slice
+  pendingHeal: { from: number; to: number; key: string } | null;
+  completeLevel: (key: string) => boolean;   // mark a level done -> heals the world one step (idempotent)
+  clearPendingHeal: () => void;
 }
+
+export const TOTAL_LEVELS = 18;   // missions + explorers that make up the journey
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 const yesterdayISO = () => new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
@@ -40,6 +46,7 @@ function snapshot(s: GameState): SaveState {
     treeGoal: s.treeGoal,
     ecoBuild: s.ecoBuild,
     ecoFixed: s.ecoFixed,
+    done: s.done,
     streakDays: s.streakDays,
     lastPlayed: s.lastPlayed,
   };
@@ -48,6 +55,7 @@ function snapshot(s: GameState): SaveState {
 export const useGameStore = create<GameState>((set, get) => ({
   ...emptySave(),
   hydrated: false,
+  pendingHeal: null,
 
   hydrate: async () => {
     const saved = await loadSave();
@@ -70,6 +78,21 @@ export const useGameStore = create<GameState>((set, get) => ({
     });
     persistSave(snapshot(get()));
   },
+
+  completeLevel: (key) => {
+    const wasDone = !!get().done[key];
+    if (!wasDone) set((s) => ({ done: { ...s.done, [key]: true } }));
+    const after = Object.keys(get().done).length;
+    // ALWAYS play the "world recovering" animation on a win (even on replay),
+    // while the permanent progress (done count) stays idempotent.
+    const to = Math.min(1, after / TOTAL_LEVELS);
+    const from = Math.max(0, (after - 1) / TOTAL_LEVELS);
+    set({ pendingHeal: { from, to, key } });
+    if (!wasDone) persistSave(snapshot(get()));
+    return !wasDone;
+  },
+
+  clearPendingHeal: () => set({ pendingHeal: null }),
 
   addRestoration: (trees, co2) => {
     set((s): Partial<GameState> => {

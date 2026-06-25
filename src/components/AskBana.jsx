@@ -3,9 +3,13 @@ import { BanaFace } from './Bana.jsx';
 import Icon from './Icons.jsx';
 import { useLang } from '../i18n.jsx';
 import { useGameStore } from '../state/gameStore.ts';
+import { useAuth } from '../data/auth.jsx';
+import { getCarbon } from '../data/db.js';
+import { CATEGORY_META } from '../logic.js';
 import {
   pickChatModel, buildIndex, answerQuestion, makePlan,
   isPlanIntent, isAmbiguous, TOPIC_TO_FOCUS,
+  isGreeting, isIdentity, isOnTopic,
 } from '../rag.js';
 
 let UID = 0; const uid = () => { UID += 1; return UID; };
@@ -23,10 +27,38 @@ function parseSteps(text) {
 export default function AskBanaPage() {
   const { lang, t } = useLang();
   const tt = (en, ne) => (lang === 'ne' ? ne : en);
+  const { user } = useAuth();
   const todos = useGameStore((s) => s.todos);
+  const levelsPassed = useGameStore((s) => s.levelsPassed);
+  const ecoPoints = useGameStore((s) => s.ecoPoints);
+  const valley = useGameStore((s) => s.valley);
   const addTodos = useGameStore((s) => s.addTodos);
   const toggleTodo = useGameStore((s) => s.toggleTodo);
   const clearTodos = useGameStore((s) => s.clearTodos);
+
+  // a compact, private context about the logged-in student so Bana can greet by
+  // name and tailor advice to their real data (footprint, progress, to-dos)
+  function personaContext() {
+    if (!user) return '';
+    const first = (user.name || '').split(' ')[0] || user.name;
+    const lines = [];
+    lines.push(`You are talking with a student named ${first}. Address them warmly by their first name (e.g. "Namaste ${first}!").`);
+    const hist = user.role === 'student' ? getCarbon(user.id) : [];
+    const latest = hist.length ? hist[hist.length - 1] : null;
+    if (latest) {
+      const pos = Object.entries(latest.breakdown || {}).filter(([k, v]) => k !== 'carbon_sink' && v > 0).sort((x, y) => y[1] - x[1]);
+      const big = pos.length ? (CATEGORY_META[pos[0][0]]?.label || pos[0][0]) : 'unknown';
+      lines.push(`Their measured footprint is about ${latest.yearly} kg CO2 per year (eco score ${latest.ecoScore} out of 100); biggest source: ${big}.`);
+    } else {
+      lines.push(`They have not measured their carbon footprint yet — gently encourage them to try the Calculator.`);
+    }
+    lines.push(`Game progress: ${levelsPassed.length} levels completed, ${ecoPoints} eco points, ${valley.trees} trees grown.`);
+    const openTodos = todos.filter((td) => !td.done).map((td) => td.text).slice(0, 4);
+    if (openTodos.length) lines.push(`Their current open eco to-dos: ${openTodos.join('; ')}.`);
+    lines.push(`Use these personal details to make help specific and motivating. Keep their name natural, do not overuse it.`);
+    return lines.join(' ');
+  }
+
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [status, setStatus] = useState('connecting');
@@ -62,11 +94,12 @@ export default function AskBanaPage() {
     setMessages((m) => [...m, { id, role: 'bana', text: '', streaming: true, steps }]);
     const onToken = (tok) => patch(id, (x) => ({ ...x, text: x.text + tok }));
     const hist = history.current.slice();
+    const userContext = personaContext();
     let result;
     try {
       result = kind === 'plan'
-        ? await makePlan({ model: model.current, answers: payload.answers, modifier: payload.modifier, focusKey: payload.focusKey, history: hist, lang, onToken })
-        : await answerQuestion({ model: model.current, query: payload.query, history: hist, lang, onToken });
+        ? await makePlan({ model: model.current, answers: payload.answers, modifier: payload.modifier, focusKey: payload.focusKey, history: hist, lang, onToken, userContext })
+        : await answerQuestion({ model: model.current, query: payload.query, history: hist, lang, onToken, userContext });
     } catch (_) { result = null; }
     if (!result || !result.text) {
       patch(id, (x) => ({ ...x, streaming: false, steps: null, error: true, text: t('ask.error') }));
@@ -113,7 +146,30 @@ export default function AskBanaPage() {
     setTimeout(advanceFlow, 140);
   }
 
+  // a quick canned Bana reply (no model call) that still joins the memory
+  function sayBana(text) {
+    push({ role: 'bana', text, streaming: false });
+    history.current.push({ role: 'assistant', content: text });
+    if (history.current.length > 12) history.current = history.current.slice(-12);
+  }
+
   function route(text) {
+    const first2 = user?.name ? user.name.split(' ')[0] : '';
+    // 1) simple greeting -> greet back by name
+    if (isGreeting(text)) {
+      sayBana(first2
+        ? tt(`Hi ${first2}! How can I help you?`, `नमस्ते ${first2}! म कसरी मद्दत गर्न सक्छु?`)
+        : tt('Hi! How can I help you with your carbon footprint today?', 'नमस्ते! आज तपाईंको कार्बन फुटप्रिन्टबारे म कसरी मद्दत गरूँ?'));
+      return;
+    }
+    // 2) "who are you" / identity questions
+    if (isIdentity(text)) {
+      sayBana(tt(
+        `I'm Bana, a red panda who helps Nepali students understand and reduce their carbon footprint. Ask me about energy, transport, cooking, waste, water or trees in Nepal!`,
+        `म बाना हुँ — नेपाली विद्यार्थीलाई आफ्नो कार्बन फुटप्रिन्ट बुझ्न र घटाउन सघाउने रातो पाण्डा। ऊर्जा, यातायात, खाना पकाउने, फोहोर, पानी वा रूखबारे सोध्नुहोस्!`));
+      return;
+    }
+    // 3) plan / topic flows
     if (isPlanIntent(text)) { startFlow(); return; }
     if (isAmbiguous(text)) {
       const key = (text.toLowerCase().match(/[a-z\u0900-\u097f]+/g) || []).map((w) => TOPIC_TO_FOCUS[w]).find(Boolean);
@@ -124,6 +180,13 @@ export default function AskBanaPage() {
       } else startFlow(undefined, null, t('ask.ambigIntro'));
       return;
     }
+    // 4) off-topic -> politely decline instead of hallucinating
+    if (!isOnTopic(text)) {
+      sayBana(tt(
+        `Sorry, I can't help with that — I only answer questions about carbon footprint, climate and the environment in Nepal. Try asking me about energy, transport, cooking, waste or trees!`,
+        `माफ गर्नुहोस्, म त्यसमा मद्दत गर्न सक्दिनँ — म नेपालको कार्बन फुटप्रिन्ट, जलवायु र वातावरणबारे मात्र जवाफ दिन्छु। ऊर्जा, यातायात, खाना पकाउने, फोहोर वा रूखबारे सोध्नुहोस्!`));
+      return;
+    }
     runStream('answer', { query: text });
   }
   function submit() { const text = input.trim(); if (!text || busy || status === 'offline') return; push({ role: 'user', text }); setInput(''); route(text); }
@@ -132,6 +195,13 @@ export default function AskBanaPage() {
   const empty = messages.length === 0;
   const doneCount = todos.filter((td) => td.done).length;
   const allDone = todos.length > 0 && doneCount === todos.length;
+  const first = user?.name ? user.name.split(' ')[0] : '';
+  const hour = new Date().getHours();
+  const tod = hour < 12 ? tt('Good morning', 'शुभ प्रभात') : hour < 17 ? tt('Good afternoon', 'शुभ दिन') : tt('Good evening', 'शुभ साँझ');
+  const welcomeText = first
+    ? tt(`${tod}, ${first}! I'm Bana. Ask me about your carbon footprint, cooking, transport, trees or waste in Nepal — or tap a starter below.`,
+         `${tod}, ${first}! म बाना हुँ। आफ्नो कार्बन फुटप्रिन्ट, खाना, यातायात, रूख वा फोहोरबारे सोध्नुहोस् — वा तलको सुझाव ट्याप गर्नुहोस्।`)
+    : t('ask.welcome');
   return (
     <div className="page fade-in">
       <div className="hero">
@@ -169,7 +239,7 @@ export default function AskBanaPage() {
         </div>
 
         <div className="chat-log" ref={logRef}>
-          {empty ? (<div className="chat-welcome"><BanaFace size={64} /><p>{t('ask.welcome')}</p></div>) : null}
+          {empty ? (<div className="chat-welcome"><BanaFace size={64} /><p>{welcomeText}</p></div>) : null}
           {messages.map((m) => {
             if (m.role === 'user') return (<div key={m.id} className="bubble-row user"><div className="bubble user">{m.text}</div></div>);
             if (m.role === 'mcq') return (
